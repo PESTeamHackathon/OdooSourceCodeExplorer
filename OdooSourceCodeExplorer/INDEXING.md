@@ -86,4 +86,4 @@ The xUnit suite covers conversation behavior plus index configuration, Python de
 
 Verified against the local Odoo checkout at commit `082a335a52b7594b86dcef7d027aa15929c338bb`: the three-module subset above produced **211 indexed Python files and 3,422 chunks**, with **570 unsupported files recorded as skipped** and **9 oversized chunks retained whole**. File/artifact hashes, unique IDs, exact line slices and nonblank-line coverage were checked against the checkout, including `SaleOrder.action_confirm`, `StockPicking.button_validate` and the `sale_stock` confirmation extension. The full solution builds with **zero warnings/errors** and **all 33 xUnit tests pass**. The checkout was clean; its code was neither executed nor compiled.
 
-No embeddings, Ollama, Qdrant, SQLite keyword search, semantic retrieval, AI-generated descriptions or production services have been introduced.
+The source-indexing command still has no embedding or retrieval work. [Milestone 3](RETRIEVAL.md) adds explicit `build-search` and `search` commands that consume its completed artifacts independently. AI-generated descriptions and production services remain unimplemented.

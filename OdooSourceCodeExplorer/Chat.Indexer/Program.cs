@@ -6,8 +6,11 @@ using Microsoft.Extensions.Configuration;
 if (args.Contains("--help"))
 {
     Console.WriteLine("""
-        BusinessChat source indexer (Milestone 2)
+        BusinessChat indexing and retrieval diagnostics (Milestones 2–3)
         dotnet run --project Chat.Indexer -- [options]
+        dotnet run --project Chat.Indexer -- build-search --artifact <source-index> --search-output <external-folder>
+        dotnet run --project Chat.Indexer -- search --index <search-index> --question <text> [--mode hybrid|semantic|keyword]
+          --module <odoo-module> --limit <1-20> --expected-version <tag> --format json
           --source <checkout-root>     SourceRepository:Path
           --output <external-folder>   Indexing:OutputPath (outside both repositories)
           --include <relative-path>    Replace IncludePaths with one directory or file
@@ -26,6 +29,8 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 try
 {
     var configArgs = args.ToList();
+    var command = configArgs.FirstOrDefault() is "build-search" or "search" ? configArgs[0] : "index";
+    if (command != "index") configArgs.RemoveAt(0);
     string? configPath = null;
     string? include = null;
     for (var i = 0; i < configArgs.Count; i++)
@@ -46,9 +51,23 @@ try
         {
             ["--source"] = "SourceRepository:Path",
             ["--output"] = "Indexing:OutputPath",
-            ["--version"] = "SourceRepository:ApplicationVersion"
+            ["--version"] = "SourceRepository:ApplicationVersion",
+            ["--artifact"] = "Retrieval:SourceIndexPath",
+            ["--search-output"] = "Retrieval:OutputPath",
+            ["--index"] = "Retrieval:IndexPath",
+            ["--question"] = "Retrieval:Question",
+            ["--module"] = "Retrieval:Module",
+            ["--limit"] = "Retrieval:Limit",
+            ["--expected-version"] = "Retrieval:ExpectedApplicationVersion",
+            ["--mode"] = "Retrieval:Mode",
+            ["--format"] = "Retrieval:Format"
         }).Build();
     using var configurationLifetime = configuration as IDisposable;
+    if (command != "index")
+    {
+        await RetrievalCommands.RunAsync(command, configuration, stop.Token);
+        return 0;
+    }
     var repository = configuration.GetSection("SourceRepository").Get<SourceRepositoryOptions>() ?? new();
     var options = configuration.GetSection("Indexing").Get<IndexOptions>() ?? new();
     if (!configuration.GetSection("Indexing:IncludePaths").Exists()) options.IncludePaths = ["."];
@@ -66,11 +85,11 @@ try
 }
 catch (OperationCanceledException)
 {
-    Console.Error.WriteLine("Indexing canceled; no completed index was published.");
+    Console.Error.WriteLine("Operation canceled; no completed index was published by an interrupted build.");
     return 130;
 }
-catch (Exception ex) when (ex is ArgumentException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or System.FormatException)
+catch (Exception ex) when (ex is ArgumentException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or System.FormatException or HttpRequestException or JsonException or Microsoft.Data.Sqlite.SqliteException)
 {
-    Console.Error.WriteLine($"Indexing failed: {ex.Message}");
+    Console.Error.WriteLine($"Operation failed: {ex.Message}");
     return 1;
 }

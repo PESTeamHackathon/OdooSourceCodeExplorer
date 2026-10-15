@@ -1,6 +1,8 @@
-# Business Knowledge Chat — Milestones 1–2
+# Business Knowledge Chat — Milestones 1–3
 
 This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements local chat through the official GitHub Copilot SDK and independent Python source indexing. The chat does not yet consume the index. Application-specific questions should receive an explicit insufficient-evidence answer. See [Milestone 2 indexing instructions](INDEXING.md) for configuring a separate Odoo checkout, running the indexer, and inspecting its artifacts.
+
+[Milestone 3 retrieval instructions](RETRIEVAL.md) cover local Ollama embeddings, Qdrant, SQLite FTS5, building a searchable generation, and testing semantic/keyword/hybrid retrieval through the console. Retrieval is not connected to chat yet.
 
 ## Architecture and minimum implementation
 
@@ -17,7 +19,7 @@ Project references:
 - `Chat.Web` -> `Chat.App`, `Chat.Infrastructure` (the composition root registers dependencies).
 - `Chat.Infrastructure` -> `Chat.App`.
 - `Chat.App` has no external package or UI/provider dependencies.
-- `Chat.Indexer` -> `Chat.App` for language-independent chunk contracts. It runs independently and has no dependency on the web runtime, Copilot or Infrastructure.
+- `Chat.Indexer` -> `Chat.App` for chunk/retrieval contracts and `Chat.Infrastructure` for search integrations. It runs independently of the web runtime and never uses Copilot during indexing or retrieval.
 - `Chat.App.Tests` -> `Chat.App`, `Chat.Indexer`.
 
 `ChatMessage` and `ChatRole` describe the transcript. `IChatService` exposes history, sending and reset; `ChatService` validates questions and commits complete turns. `IAnswerGenerator` is the replaceable provider boundary. `AnswerGenerationException` carries safe errors. Infrastructure contains the SDK adapter, typed options and DI registration.
@@ -32,6 +34,7 @@ Runtime package references:
 
 - `GitHub.Copilot.SDK` **1.0.22**, retained from the existing Infrastructure project.
 - `Microsoft.Extensions.Options.ConfigurationExtensions` **10.0.0**, for configuration binding and validated options.
+- `Microsoft.Data.Sqlite` **10.0.13**, for the independently built knowledge/FTS5 store. Ollama and Qdrant integrations use their HTTP APIs without extra client frameworks.
 
 Tests use `Microsoft.NET.Test.Sdk` 17.14.1, `xunit` 2.9.3 and `xunit.runner.visualstudio` 3.1.4. No extra agent framework is used.
 
@@ -121,6 +124,6 @@ Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 M
 
 ## Scope and future integration
 
-The chat runtime has no repository access or retrieval integration. Milestone 2 adds an independent indexer that reads a separate checkout and writes structured evidence with commit/application-version metadata outside both repositories. It never compiles, imports or executes target source. Embeddings, databases, retrieval, CI/CD and production deployment remain outside the implemented scope.
+The chat runtime has no repository access or retrieval integration. Milestone 2 adds an independent source indexer; Milestone 3 consumes those artifacts to build and search local embedding, vector and keyword indexes. Source indexing and retrieval remain separate from chat requests. CI/CD, production deployment, terminology mappings and relationship expansion remain outside the implemented scope.
 
 This unauthenticated PoC is for local developer use. Production requires application authentication/authorization, conversation ownership, index access protection, source-sharing policy approval, and explicit validation of AI authentication, licensing and billing. A developer's personal Copilot subscription is not assumed to cover business users. Raw SDK errors and transcript content are not written to application logs; SDK-managed local data still requires protection.

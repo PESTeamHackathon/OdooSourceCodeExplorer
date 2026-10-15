@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../Chat.App/Chat.App.csproj" />
+        <ProjectReference Include="../Chat.Infrastructure/Chat.Infrastructure.csproj" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.0" />
