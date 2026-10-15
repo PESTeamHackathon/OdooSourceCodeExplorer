@@ -16,6 +16,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../Chat.App/Chat.App.csproj" />
+    <ProjectReference Include="../Chat.Indexer/Chat.Indexer.csproj" />
   </ItemGroup>
 
 </Project>

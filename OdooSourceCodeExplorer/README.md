@@ -1,6 +1,6 @@
-# Business Knowledge Chat — Milestone 1
+# Business Knowledge Chat — Milestones 1–2
 
-This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements local chat through the official GitHub Copilot SDK. It does not yet know anything about the application being analyzed. Application-specific questions should receive an explicit insufficient-evidence answer.
+This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements local chat through the official GitHub Copilot SDK and independent Python source indexing. The chat does not yet consume the index. Application-specific questions should receive an explicit insufficient-evidence answer. See [Milestone 2 indexing instructions](INDEXING.md) for configuring a separate Odoo checkout, running the indexer, and inspecting its artifacts.
 
 ## Architecture and minimum implementation
 
@@ -17,8 +17,8 @@ Project references:
 - `Chat.Web` -> `Chat.App`, `Chat.Infrastructure` (the composition root registers dependencies).
 - `Chat.Infrastructure` -> `Chat.App`.
 - `Chat.App` has no external package or UI/provider dependencies.
-- `Chat.Indexer` remains a standalone placeholder, without runtime references.
-- `Chat.App.Tests` -> `Chat.App`.
+- `Chat.Indexer` -> `Chat.App` for language-independent chunk contracts. It runs independently and has no dependency on the web runtime, Copilot or Infrastructure.
+- `Chat.App.Tests` -> `Chat.App`, `Chat.Indexer`.
 
 `ChatMessage` and `ChatRole` describe the transcript. `IChatService` exposes history, sending and reset; `ChatService` validates questions and commits complete turns. `IAnswerGenerator` is the replaceable provider boundary. `AnswerGenerationException` carries safe errors. Infrastructure contains the SDK adapter, typed options and DI registration.
 
@@ -102,7 +102,7 @@ dotnet test OdooSourceCodeExplorer.sln
 
 The offline xUnit tests cover follow-up context, attachment validation, isolation, reset, failed/empty responses, cancellation, size/turn limits and overlapping operations. They do not contact Copilot or consume allowance.
 
-Verified in this workspace: the complete solution builds with zero warnings/errors; all ten tests pass. The running browser page accepts input, submits through the service layers, and displays a safe provider-unavailable error while preserving the question. A successful authenticated model response has not yet been verified; complete the login steps above and the checks below before treating the live integration as operational.
+Milestone 1 browser verification confirmed input, submission through the service layers, and safe provider-unavailable errors while preserving the question. A successful authenticated model response was not verified in that check; complete the login steps above and the checks below before treating the live chat integration as operational. See [indexing verification](INDEXING.md#tests) for Milestone 2 results.
 
 After authenticating, exercise the real integration:
 
@@ -121,6 +121,6 @@ Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 M
 
 ## Scope and future integration
 
-This milestone includes no repository access, source analysis, embeddings, databases, retrieval, streaming, CI/CD or production deployment. No source checkout is copied, referenced, compiled or executed. Separate indexing and commit/application-version metadata will be introduced in their assigned milestones.
+The chat runtime has no repository access or retrieval integration. Milestone 2 adds an independent indexer that reads a separate checkout and writes structured evidence with commit/application-version metadata outside both repositories. It never compiles, imports or executes target source. Embeddings, databases, retrieval, CI/CD and production deployment remain outside the implemented scope.
 
 This unauthenticated PoC is for local developer use. Production requires application authentication/authorization, conversation ownership, index access protection, source-sharing policy approval, and explicit validation of AI authentication, licensing and billing. A developer's personal Copilot subscription is not assumed to cover business users. Raw SDK errors and transcript content are not written to application logs; SDK-managed local data still requires protection.
