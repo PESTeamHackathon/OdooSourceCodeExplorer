@@ -1,0 +1,102 @@
+@page "/"
+@using Chat.App
+@implements IDisposable
+@inject IChatService Chat
+@inject ILogger<Home> Logger
+
+<PageTitle>Business Knowledge Chat</PageTitle>
+
+<h1>Business Knowledge Chat</h1>
+<p class="text-secondary">Ask a question, then continue the conversation with follow-up questions.</p>
+<p class="alert alert-info">This preview supports general conversation. Application knowledge is not connected yet,
+    so answers cannot verify your application's behavior.</p>
+
+<section class="chat-history" aria-label="Conversation" aria-live="polite" aria-busy="@_busy">
+    @if (Chat.Messages.Count == 0)
+    {
+        <p class="text-secondary">Start with a general business question, such as “What is a credit memo?”</p>
+    }
+    @foreach (var message in Chat.Messages)
+    {
+        <article class="chat-message @(message.Role == ChatRole.User ? "question" : "answer")">
+            <strong>@(message.Role == ChatRole.User ? "You" : "Assistant")</strong>
+            <div class="message-text">@message.Content</div>
+        </article>
+    }
+    @if (_busy)
+    {
+        <article class="chat-message question"><strong>You</strong><div class="message-text">@_pendingQuestion</div></article>
+        <p role="status">Preparing an answer…</p>
+    }
+</section>
+
+@if (_error is not null)
+{
+    <p class="alert alert-danger" role="alert">@_error</p>
+}
+
+<form @onsubmit="SendAsync" @onsubmit:preventDefault>
+    <label for="question" class="form-label">Your question</label>
+    <textarea id="question" class="form-control" rows="3" maxlength="@ChatService.MaxQuestionLength"
+              @bind="_question" @bind:event="oninput" disabled="@_busy" required></textarea>
+    <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary" type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_question))">Send</button>
+        @if (_busy)
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="Cancel">Cancel</button>
+        }
+        <button class="btn btn-outline-secondary" type="button" @onclick="Clear" disabled="@_busy">New conversation</button>
+    </div>
+</form>
+<p class="small text-secondary mt-3">History is kept for this browser session, up to @ChatService.MaxTurns exchanges.
+    Reloading the page starts a new conversation.</p>
+
+@code {
+    private string _question = "";
+    private string? _pendingQuestion;
+    private string? _error;
+    private bool _busy;
+    private CancellationTokenSource? _request;
+
+    private async Task SendAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_question)) return;
+        _busy = true;
+        _error = null;
+        _pendingQuestion = _question;
+        using var request = new CancellationTokenSource();
+        _request = request;
+        try
+        {
+            await Chat.SendAsync(_question, request.Token);
+            _question = "";
+        }
+        catch (OperationCanceledException) { _error = "Request canceled. You can retry your question."; }
+        catch (Exception ex) when (ex is AnswerGenerationException or ArgumentException or InvalidOperationException)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Chat request failed ({ErrorType}).", ex.GetType().Name);
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _request = null;
+            _busy = false;
+            _pendingQuestion = null;
+        }
+    }
+
+    private void Cancel() => _request?.Cancel();
+
+    private void Clear()
+    {
+        Chat.Clear();
+        _question = "";
+        _error = null;
+    }
+
+    public void Dispose() => _request?.Cancel();
+}

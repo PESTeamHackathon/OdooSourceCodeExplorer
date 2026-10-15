@@ -13,6 +13,8 @@ publish/
 
 [Tt]est[Rr]esults/
 BenchmarkDotNet.Artifacts/
+*.trx
+*.coverage.cobertura.xml
 
 coverage/
 coverage*/
@@ -42,6 +44,8 @@ logs/
 *.userosscache
 *.rsuser
 *.sln.docstates
+*.pubxml
+*.publishsettings
 
 ###############################################################################
 # JetBrains Rider / IntelliJ
@@ -53,6 +57,7 @@ logs/
 # Visual Studio Code
 ###############################################################################
 
+!.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -74,6 +79,10 @@ logs/
 
 *.nupkg
 *.snupkg
+# Repository-local NuGet package cache; retain any restore configuration.
+packages/*
+!packages/repositories.config
+.nuget/packages/
 
 ###############################################################################
 # MSBuild
@@ -98,6 +107,8 @@ Generated_Code/
 *.orig
 *.rej
 *~
+*.swp
+*.swo
 
 ###############################################################################
 # Operating System
@@ -106,6 +117,10 @@ Generated_Code/
 Thumbs.db
 Desktop.ini
 .DS_Store
+._*
+.AppleDouble/
+.LSOverride
+$RECYCLE.BIN/
 
 ###############################################################################
 # Certificates & secrets
@@ -113,6 +128,20 @@ Desktop.ini
 
 *.pfx
 *.snk
+*.p12
+
+# Local environment overrides; keep sanitized examples available to commit.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Copilot credentials and session state if configured inside the solution.
+.copilot/
+.copilot-business-chat/
 
 # User Secrets are stored outside the repository by .NET.
 # appsettings*.json should normally be committed.
@@ -127,6 +156,15 @@ Desktop.ini
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
 
 ###############################################################################
 # Docker
