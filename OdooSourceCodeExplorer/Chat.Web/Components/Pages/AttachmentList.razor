@@ -1,0 +1,18 @@
+@using Chat.App
+
+@if (Attachments is { Count: > 0 })
+{
+    <ul class="attachment-list" aria-label="Attached files">
+        @foreach (var attachment in Attachments)
+        {
+            <li class="attachment-chip">
+                <span class="chip-kind">@(attachment.Kind == AttachmentKind.Image ? "Image" : "File")</span>
+                <span>@attachment.FileName</span>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ChatAttachment>? Attachments { get; set; }
+}

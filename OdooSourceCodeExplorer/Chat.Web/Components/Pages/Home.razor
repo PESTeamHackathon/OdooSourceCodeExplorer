@@ -1,59 +1,121 @@
 @page "/"
 @using Chat.App
+@using Markdig
 @implements IDisposable
 @inject IChatService Chat
 @inject ILogger<Home> Logger
+@inject IJSRuntime JS
 
 <PageTitle>Business Knowledge Chat</PageTitle>
 
-<h1>Business Knowledge Chat</h1>
-<p class="text-secondary">Ask a question, then continue the conversation with follow-up questions.</p>
-<p class="alert alert-info">This preview supports general conversation. Application knowledge is not connected yet,
-    so answers cannot verify your application's behavior.</p>
-
-<section class="chat-history" aria-label="Conversation" aria-live="polite" aria-busy="@_busy">
-    @if (Chat.Messages.Count == 0)
-    {
-        <p class="text-secondary">Start with a general business question, such as “What is a credit memo?”</p>
-    }
-    @foreach (var message in Chat.Messages)
-    {
-        <article class="chat-message @(message.Role == ChatRole.User ? "question" : "answer")">
-            <strong>@(message.Role == ChatRole.User ? "You" : "Assistant")</strong>
-            <div class="message-text">@message.Content</div>
-        </article>
-    }
-    @if (_busy)
-    {
-        <article class="chat-message question"><strong>You</strong><div class="message-text">@_pendingQuestion</div></article>
-        <p role="status">Preparing an answer…</p>
-    }
+<section class="hero">
+    <h1 class="hand">All your business on <span class="highlight">one platform</span>.</h1>
+    <p class="hand subtitle">Simple, efficient, yet <span class="underline">affordable</span>!</p>
 </section>
 
-@if (_error is not null)
-{
-    <p class="alert alert-danger" role="alert">@_error</p>
-}
+<section class="apps-area">
+    <div class="chat-card">
+        <div class="chat-card-header">
+            <h2>Ask from the source</h2>
+        </div>
 
-<form @onsubmit="SendAsync" @onsubmit:preventDefault>
-    <label for="question" class="form-label">Your question</label>
-    <textarea id="question" class="form-control" rows="3" maxlength="@ChatService.MaxQuestionLength"
-              @bind="_question" @bind:event="oninput" disabled="@_busy" required></textarea>
-    <div class="d-flex gap-2 mt-3">
-        <button class="btn btn-primary" type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_question))">Send</button>
-        @if (_busy)
+        @if (Chat.Messages.Count > 0 || _busy)
         {
-            <button class="btn btn-outline-secondary" type="button" @onclick="Cancel">Cancel</button>
+            <section class="chat-history" @ref="_history" aria-label="Conversation" aria-live="polite" aria-busy="@_busy">
+                @foreach (var message in Chat.Messages)
+                {
+                    <article class="chat-message @(message.Role == ChatRole.User ? "question" : "answer")">
+                        <strong>@(message.Role == ChatRole.User ? "You" : "Assistant")</strong>
+                        @if (message.Role == ChatRole.User)
+                        {
+                            <div class="message-text">@message.Content</div>
+                            <AttachmentList Attachments="message.Attachments"/>
+                        }
+                        else
+                        {
+                            <div class="message-markdown">@RenderMarkdown(message.Content)</div>
+                        }
+                    </article>
+                }
+                @if (_busy)
+                {
+                    <article class="chat-message question">
+                        <strong>You</strong>
+                        <div class="message-text">@_pendingQuestion</div>
+                        <AttachmentList Attachments="_pendingAttachments"/>
+                    </article>
+                    <p class="thinking" role="status">Preparing an answer…</p>
+                }
+            </section>
         }
-        <button class="btn btn-outline-secondary" type="button" @onclick="Clear" disabled="@_busy">New conversation</button>
+
+        @if (_error is not null)
+        {
+            <p class="alert alert-danger" role="alert">@_error</p>
+        }
+
+        <form class="chat-input" @onsubmit="SendAsync" @onsubmit:preventDefault>
+            <div class="chat-compose">
+                <label for="question" class="visually-hidden">Your question</label>
+                <textarea id="question" class="form-control" rows="2" maxlength="@ChatService.MaxQuestionLength"
+                          placeholder="Start with a general business question, such as “What is a credit memo?”"
+                          @bind="_question" @bind:event="oninput" disabled="@_busy" required data-enter-submits></textarea>
+                @if (_attachments.Count > 0)
+                {
+                    <ul class="attachment-list pending" aria-label="Files to send">
+                        @foreach (var attachment in _attachments)
+                        {
+                            <li class="attachment-chip">
+                                <span>@attachment.FileName</span>
+                                <button type="button" class="chip-remove" aria-label="Remove @attachment.FileName"
+                                        @onclick="() => _attachments.Remove(attachment)" disabled="@_busy">×</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div class="chat-actions">
+                <label class="btn btn-light attach-button @(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage ? "disabled" : "")"
+                       title="Attach images or text files" aria-label="Attach files">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <InputFile class="visually-hidden" multiple accept="@ChatAttachment.AcceptedExtensions"
+                               OnChange="AddFilesAsync" disabled="@(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage)"/>
+                </label>
+                @if (_busy)
+                {
+                    <button class="btn btn-light" type="button" @onclick="Cancel">Cancel</button>
+                }
+                <button class="btn btn-primary" type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_question))">Send</button>
+            </div>
+        </form>
     </div>
-</form>
-<p class="small text-secondary mt-3">History is kept for this browser session, up to @ChatService.MaxTurns exchanges.
-    Reloading the page starts a new conversation.</p>
+
+    <ul class="apps-grid" aria-label="Apps">
+        @foreach (var app in AppModules.All)
+        {
+            <li class="app">
+                <span class="app-icon">
+                    <svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true">@((MarkupString)app.Icon)</svg>
+                </span>
+                <span class="app-name">@app.Name</span>
+            </li>
+        }
+    </ul>
+</section>
 
 @code {
+    // Raw HTML in answers is escaped, so only Markdown formatting is rendered.
+    private static readonly MarkdownPipeline Markdown = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
     private string _question = "";
     private string? _pendingQuestion;
+    private List<ChatAttachment> _attachments = [];
+    private IReadOnlyList<ChatAttachment>? _pendingAttachments;
+    private ElementReference _history;
+    private bool _scrollToLatest;
     private string? _error;
     private bool _busy;
     private CancellationTokenSource? _request;
@@ -64,12 +126,15 @@
         _busy = true;
         _error = null;
         _pendingQuestion = _question;
+        _pendingAttachments = [.. _attachments];
+        _scrollToLatest = true;
         using var request = new CancellationTokenSource();
         _request = request;
         try
         {
-            await Chat.SendAsync(_question, request.Token);
+            await Chat.SendAsync(_question, _pendingAttachments, request.Token);
             _question = "";
+            _attachments = [];
         }
         catch (OperationCanceledException) { _error = "Request canceled. You can retry your question."; }
         catch (Exception ex) when (ex is AnswerGenerationException or ArgumentException or InvalidOperationException)
@@ -86,17 +151,56 @@
             _request = null;
             _busy = false;
             _pendingQuestion = null;
+            _pendingAttachments = null;
+            _scrollToLatest = true;
         }
     }
 
-    private void Cancel() => _request?.Cancel();
-
-    private void Clear()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Chat.Clear();
-        _question = "";
-        _error = null;
+        if (!_scrollToLatest) return;
+        _scrollToLatest = false;
+        try { await JS.InvokeVoidAsync("chatScrollToLatest", _history); }
+        catch (JSDisconnectedException) { }
     }
+
+    private async Task AddFilesAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var free = ChatAttachment.MaxPerMessage - _attachments.Count;
+        var files = e.GetMultipleFiles(ChatAttachment.MaxPerMessage);
+        if (files.Count > free)
+            _error = $"You can attach at most {ChatAttachment.MaxPerMessage} files per message.";
+        foreach (var file in files.Take(free))
+        {
+            if (!ChatAttachment.TryGetMediaType(file.Name, out var mediaType))
+            {
+                _error = $"“{file.Name}” is not supported. Attach images (PNG, JPG, GIF, WebP) or text files.";
+                continue;
+            }
+            var maxBytes = mediaType.StartsWith("image/") ? ChatAttachment.MaxImageBytes : ChatAttachment.MaxTextBytes;
+            if (file.Size == 0 || file.Size > maxBytes)
+            {
+                _error = $"“{file.Name}” must be between 1 byte and {maxBytes / 1024} KB.";
+                continue;
+            }
+            try
+            {
+                using var buffer = new MemoryStream();
+                await using var stream = file.OpenReadStream(maxBytes);
+                await stream.CopyToAsync(buffer);
+                _attachments.Add(new ChatAttachment(file.Name, mediaType, buffer.ToArray()));
+            }
+            catch (IOException)
+            {
+                _error = $"“{file.Name}” could not be read. Please try again.";
+            }
+        }
+    }
+
+    private static MarkupString RenderMarkdown(string content) => new(Markdig.Markdown.ToHtml(content, Markdown));
+
+    private void Cancel() => _request?.Cancel();
 
     public void Dispose() => _request?.Cancel();
 }

@@ -111,6 +111,52 @@ public sealed class ChatServiceTests
         Assert.Equal(2, chat.Messages.Count);
     }
 
+    [Fact]
+    public async Task AttachmentsReachProviderAndStayInHistory()
+    {
+        var provider = new StubGenerator();
+        var chat = new ChatService(provider);
+        var image = new ChatAttachment("screen.png", "image/png", [1, 2, 3]);
+        await chat.SendAsync("What is shown?", [image]);
+        await chat.SendAsync("And in more detail?");
+
+        Assert.Equal([image], provider.LastMessages![0].Attachments!);
+        Assert.Null(provider.LastMessages[2].Attachments);
+    }
+
+    [Theory]
+    [InlineData("report.pdf", "text/plain", 10)]
+    [InlineData("notes.txt", "image/png", 10)]
+    [InlineData("empty.txt", "text/plain", 0)]
+    [InlineData("big.txt", "text/plain", ChatAttachment.MaxTextBytes + 1)]
+    [InlineData("big.png", "image/png", ChatAttachment.MaxImageBytes + 1)]
+    public async Task InvalidAttachmentsNeverCallProvider(string fileName, string mediaType, int size)
+    {
+        var provider = new StubGenerator();
+        var attachment = new ChatAttachment(fileName, mediaType, new byte[size]);
+        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", [attachment]));
+        Assert.Null(provider.LastMessages);
+    }
+
+    [Fact]
+    public async Task NonUtf8TextAttachmentIsRejected()
+    {
+        var provider = new StubGenerator();
+        var attachment = new ChatAttachment("data.csv", "text/plain", [0xC3, 0x28]);
+        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", [attachment]));
+        Assert.Null(provider.LastMessages);
+    }
+
+    [Fact]
+    public async Task TooManyAttachmentsAreRejected()
+    {
+        var provider = new StubGenerator();
+        var files = Enumerable.Range(0, ChatAttachment.MaxPerMessage + 1)
+            .Select(i => new ChatAttachment($"f{i}.txt", "text/plain", [65])).ToArray();
+        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", files));
+        Assert.Null(provider.LastMessages);
+    }
+
     private sealed class StubGenerator : IAnswerGenerator
     {
         public IReadOnlyList<ChatMessage>? LastMessages { get; private set; }

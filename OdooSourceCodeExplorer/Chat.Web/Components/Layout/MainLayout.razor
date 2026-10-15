@@ -1,20 +1,40 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu/>
-    </div>
+<header class="o-header">
+    <div class="o-header-inner">
+        <a class="o-logo" href="" aria-label="Home">
+            <svg viewBox="0 0 70 26" width="62" height="23" aria-hidden="true">
+                <g fill="none" stroke="#8F8F8F" stroke-width="3.6">
+                    <circle cx="9" cy="15" r="7"/>
+                    <circle cx="26" cy="15" r="7"/>
+                    <path d="M33 2v20" stroke-linecap="round"/>
+                    <circle cx="44" cy="15" r="7"/>
+                    <circle cx="61" cy="15" r="7"/>
+                </g>
+            </svg>
+        </a>
 
-    <main>
-        <div class="top-row px-4">
-            <span>Local proof of concept · Milestone 1</span>
+        <nav class="o-nav" aria-label="Main">
+            <span class="o-nav-link">Apps</span>
+            <span class="o-nav-link">Industries</span>
+            <span class="o-nav-link">Community</span>
+            <span class="o-nav-link">Pricing</span>
+            <span class="o-nav-link">Help</span>
+        </nav>
+
+        <div class="o-header-actions">
+            <span class="o-user" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="15" height="15"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="6.3" r="2.4" fill="currentColor"/><path d="M3.6 12.6c1-1.8 2.6-2.6 4.4-2.6s3.4.8 4.4 2.6" fill="currentColor"/></svg>
+                <span class="o-caret"></span>
+            </span>
+            <span class="btn btn-primary btn-sm o-try">Try it free</span>
         </div>
+    </div>
+</header>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+<main>
+    @Body
+</main>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

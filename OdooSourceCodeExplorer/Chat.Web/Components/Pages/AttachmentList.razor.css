@@ -1,0 +1,26 @@
+.attachment-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    padding: 0;
+    margin: .5rem 0 0;
+}
+
+.attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    max-width: 100%;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 999px;
+    padding: .15rem .65rem;
+    font-size: .8rem;
+    overflow-wrap: anywhere;
+}
+
+.chip-kind {
+    color: #714B67;
+    font-weight: 600;
+}

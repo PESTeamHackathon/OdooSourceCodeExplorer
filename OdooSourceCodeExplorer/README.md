@@ -100,7 +100,7 @@ A null model uses the runtime's default available to your account. Set `Copilot_
 dotnet test OdooSourceCodeExplorer.sln
 ```
 
-The ten offline xUnit tests cover follow-up context, isolation, reset, failed/empty responses, cancellation, size/turn limits and overlapping operations. They do not contact Copilot or consume allowance.
+The offline xUnit tests cover follow-up context, attachment validation, isolation, reset, failed/empty responses, cancellation, size/turn limits and overlapping operations. They do not contact Copilot or consume allowance.
 
 Verified in this workspace: the complete solution builds with zero warnings/errors; all ten tests pass. The running browser page accepts input, submits through the service layers, and displays a safe provider-unavailable error while preserving the question. A successful authenticated model response has not yet been verified; complete the login steps above and the checks below before treating the live integration as operational.
 
@@ -113,7 +113,11 @@ After authenticating, exercise the real integration:
 5. Send and cancel a request. Its question remains editable and the transcript is unchanged.
 6. If authentication is missing, usage is exhausted, or the model is unavailable, expect a safe error and a retryable question, without raw provider errors.
 
-Model instructions guide evidence handling and business language; they are not a formal guarantee against hallucination. Source-grounded evaluation belongs to later milestones. Responses are rendered as encoded text, not trusted HTML.
+Model instructions guide evidence handling and business language; they are not a formal guarantee against hallucination. Source-grounded evaluation belongs to later milestones. Responses are rendered from Markdown with raw HTML disabled, so answer content cannot inject markup.
+
+## Attachments
+
+Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 MB) and UTF-8 text files (txt, md, csv, json, xml, code and similar, max 200 KB). The type is derived from the file extension and validated in `ChatService`; a conversation holds at most 20 MB of attachments. Images are sent to Copilot as inline base64 blobs; text file content is embedded in the transcript. Both are labeled as untrusted user data, tools stay disabled, and nothing is written to disk. Attachments remain in the conversation so follow-ups can refer to them, which means they are resent (and billed) on each turn. Whether images are understood depends on the selected model's vision support.
 
 ## Scope and future integration
 

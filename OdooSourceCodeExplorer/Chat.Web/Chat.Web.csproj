@@ -11,4 +11,8 @@
         <ProjectReference Include="../Chat.App/Chat.App.csproj" />
         <ProjectReference Include="../Chat.Infrastructure/Chat.Infrastructure.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Markdig" Version="1.4.0" />
+    </ItemGroup>
 </Project>
