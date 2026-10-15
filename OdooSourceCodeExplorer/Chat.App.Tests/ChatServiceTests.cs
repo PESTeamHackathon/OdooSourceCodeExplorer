@@ -8,7 +8,7 @@ public sealed class ChatServiceTests
     public async Task FollowUpIncludesPreviousExchange()
     {
         var provider = new StubGenerator();
-        var chat = new ChatService(provider);
+        var chat = CreateChat(provider);
         await chat.SendAsync("  What is a credit memo?  ");
         await chat.SendAsync("Summarize that.");
 
@@ -23,7 +23,7 @@ public sealed class ChatServiceTests
     public async Task FailedTurnDoesNotCorruptHistoryAndCanBeRetried()
     {
         var provider = new StubGenerator();
-        var chat = new ChatService(provider);
+        var chat = CreateChat(provider);
         await chat.SendAsync("First question");
         provider.Answer = (_, _) => throw new AnswerGenerationException("Unavailable");
         await Assert.ThrowsAsync<AnswerGenerationException>(() => chat.SendAsync("Retry me"));
@@ -37,7 +37,7 @@ public sealed class ChatServiceTests
     public async Task CancellationPreservesHistory()
     {
         var provider = new StubGenerator { Answer = (_, ct) => Task.FromCanceled<string>(ct) };
-        var chat = new ChatService(provider);
+        var chat = CreateChat(provider);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => chat.SendAsync("Question", cancellation.Token));
@@ -50,7 +50,7 @@ public sealed class ChatServiceTests
     public async Task EmptyQuestionsNeverCallProvider(string question)
     {
         var provider = new StubGenerator();
-        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync(question));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateChat(provider).SendAsync(question));
         Assert.Null(provider.LastMessages);
     }
 
@@ -58,14 +58,14 @@ public sealed class ChatServiceTests
     public async Task OversizedQuestionNeverCallsProvider()
     {
         var provider = new StubGenerator();
-        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync(new string('a', 4001)));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateChat(provider).SendAsync(new string('a', 4001)));
         Assert.Null(provider.LastMessages);
     }
 
     [Fact]
     public async Task EmptyProviderAnswerDoesNotCommitTurn()
     {
-        var chat = new ChatService(new StubGenerator { Answer = (_, _) => Task.FromResult(" ") });
+        var chat = CreateChat(new StubGenerator { Answer = (_, _) => Task.FromResult(" ") });
         await Assert.ThrowsAsync<InvalidOperationException>(() => chat.SendAsync("Question"));
         Assert.Empty(chat.Messages);
     }
@@ -74,8 +74,8 @@ public sealed class ChatServiceTests
     public async Task ConversationsAreIsolatedAndCanBeCleared()
     {
         var provider = new StubGenerator();
-        var first = new ChatService(provider);
-        var second = new ChatService(provider);
+        var first = CreateChat(provider);
+        var second = CreateChat(provider);
         await first.SendAsync("Private question");
         Assert.Empty(second.Messages);
         first.Clear();
@@ -86,7 +86,7 @@ public sealed class ChatServiceTests
     [Fact]
     public async Task ConversationLimitRequiresExplicitReset()
     {
-        var chat = new ChatService(new StubGenerator());
+        var chat = CreateChat(new StubGenerator());
         for (var i = 0; i < ChatService.MaxTurns; i++) await chat.SendAsync("Question");
         await Assert.ThrowsAsync<InvalidOperationException>(() => chat.SendAsync("Another question"));
         Assert.Equal(ChatService.MaxTurns * 2, chat.Messages.Count);
@@ -99,7 +99,7 @@ public sealed class ChatServiceTests
     public async Task ConcurrentTurnsAndResetAreRejectedWhileAnswerIsPending()
     {
         var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var chat = new ChatService(new StubGenerator { Answer = (_, _) => pending.Task });
+        var chat = CreateChat(new StubGenerator { Answer = (_, _) => pending.Task });
         var first = chat.SendAsync("First");
         try
         {
@@ -115,7 +115,7 @@ public sealed class ChatServiceTests
     public async Task AttachmentsReachProviderAndStayInHistory()
     {
         var provider = new StubGenerator();
-        var chat = new ChatService(provider);
+        var chat = CreateChat(provider);
         var image = new ChatAttachment("screen.png", "image/png", [1, 2, 3]);
         await chat.SendAsync("What is shown?", [image]);
         await chat.SendAsync("And in more detail?");
@@ -134,7 +134,7 @@ public sealed class ChatServiceTests
     {
         var provider = new StubGenerator();
         var attachment = new ChatAttachment(fileName, mediaType, new byte[size]);
-        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", [attachment]));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateChat(provider).SendAsync("Question", [attachment]));
         Assert.Null(provider.LastMessages);
     }
 
@@ -143,7 +143,7 @@ public sealed class ChatServiceTests
     {
         var provider = new StubGenerator();
         var attachment = new ChatAttachment("data.csv", "text/plain", [0xC3, 0x28]);
-        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", [attachment]));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateChat(provider).SendAsync("Question", [attachment]));
         Assert.Null(provider.LastMessages);
     }
 
@@ -153,8 +153,18 @@ public sealed class ChatServiceTests
         var provider = new StubGenerator();
         var files = Enumerable.Range(0, ChatAttachment.MaxPerMessage + 1)
             .Select(i => new ChatAttachment($"f{i}.txt", "text/plain", [65])).ToArray();
-        await Assert.ThrowsAsync<ArgumentException>(() => new ChatService(provider).SendAsync("Question", files));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateChat(provider).SendAsync("Question", files));
         Assert.Null(provider.LastMessages);
+    }
+
+    private static ChatService CreateChat(IAnswerGenerator provider) => new(provider, new StubRetriever(),
+        new KnowledgeChatOptions { ExpectedApplicationVersion = "test" });
+
+    private sealed class StubRetriever : Chat.App.Retrieval.ICodeRetriever
+    {
+        public Task<Chat.App.Retrieval.RetrievalResult> RetrieveAsync(Chat.App.Retrieval.RetrievalQuery query, CancellationToken cancellationToken = default)
+            => Task.FromResult(new Chat.App.Retrieval.RetrievalResult(new("fixture", "source", "commit", "test", false, 1),
+                [new(new("fixture-id", "python", "models/fixture.py", "sale", "addons/sale", "method", "do_action", "SaleOrder.do_action", "SaleOrder", 1, 2, "class SaleOrder:", "pass"), 0.1, 1, 1)]));
     }
 
     private sealed class StubGenerator : IAnswerGenerator
@@ -163,10 +173,10 @@ public sealed class ChatServiceTests
         public Func<IReadOnlyList<ChatMessage>, CancellationToken, Task<string>> Answer { get; set; }
             = (_, _) => Task.FromResult("General business information.");
 
-        public Task<string> GenerateAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default)
+        public async Task<AnswerDraft> GenerateAsync(AnswerRequest request, CancellationToken cancellationToken = default)
         {
-            LastMessages = messages;
-            return Answer(messages, cancellationToken);
+            LastMessages = request.Messages;
+            return new AnswerDraft("supported", [new(await Answer(request.Messages, cancellationToken), ["fixture-id"])]);
         }
     }
 }

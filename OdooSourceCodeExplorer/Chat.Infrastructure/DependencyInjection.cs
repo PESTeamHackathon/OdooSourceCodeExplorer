@@ -35,6 +35,10 @@ public static class DependencyInjection
             });
         });
         services.AddSingleton<IAnswerGenerator, CopilotAnswerGenerator>();
+        var knowledgeOptions = configuration.GetSection("KnowledgeChat").Get<KnowledgeChatOptions>() ?? new();
+        if (knowledgeOptions.RetrievalLimit is < 1 or > 20 || knowledgeOptions.MaxEvidenceCharacters is < 1000 or > 100_000 || knowledgeOptions.RetrievalTimeoutSeconds is < 1 or > 120)
+            throw new ArgumentException("Invalid KnowledgeChat retrieval limit, evidence budget or timeout.");
+        services.AddSingleton(knowledgeOptions);
         services.AddScoped<IChatService, ChatService>();
         return services;
     }

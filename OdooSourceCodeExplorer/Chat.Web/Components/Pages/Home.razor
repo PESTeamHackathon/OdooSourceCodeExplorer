@@ -17,6 +17,7 @@
     <div class="chat-card">
         <div class="chat-card-header">
             <h2>Ask from the source</h2>
+            <p class="small text-secondary">Answers use the selected application knowledge. Missing or conflicting information will be acknowledged.</p>
         </div>
 
         @if (Chat.Messages.Count > 0 || _busy)
@@ -58,7 +59,7 @@
             <div class="chat-compose">
                 <label for="question" class="visually-hidden">Your question</label>
                 <textarea id="question" class="form-control" rows="2" maxlength="@ChatService.MaxQuestionLength"
-                          placeholder="Start with a general business question, such as “What is a credit memo?”"
+                          placeholder="Ask about Odoo, such as “What happens when I cancel a sales order?”"
                           @bind="_question" @bind:event="oninput" disabled="@_busy" required data-enter-submits></textarea>
                 @if (_attachments.Count > 0)
                 {

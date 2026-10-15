@@ -8,21 +8,27 @@ public sealed class KnowledgeSearch : IKnowledgeSearch
 {
     private readonly OllamaEmbeddingClient _embeddings;
     private readonly QdrantVectorStore _vectors;
-    private readonly SearchIndexManifest _manifest;
-    private readonly SqliteKnowledgeStore _sqlite;
-    private readonly string _db;
+    private sealed record IndexState(SearchIndexManifest Manifest, string Database, SqliteKnowledgeStore Store);
+    private readonly Lazy<IndexState> _state;
+    private SearchIndexManifest _manifest => _state.Value.Manifest;
+    private SqliteKnowledgeStore _sqlite => _state.Value.Store;
+    private string _db => _state.Value.Database;
 
     public KnowledgeSearch(RetrievalOptions options, OllamaEmbeddingClient embeddings, QdrantVectorStore vectors)
     {
         options.Validate();
-        if (string.IsNullOrWhiteSpace(options.IndexPath)) throw new ArgumentException("Retrieval:IndexPath must select a completed search generation.");
         _embeddings = embeddings; _vectors = vectors;
-        _manifest = JsonSerializer.Deserialize<SearchIndexManifest>(File.ReadAllText(Path.Combine(options.IndexPath, "search-manifest.json")), SearchIndexBuilder.Json)
-            ?? throw new InvalidOperationException("Missing search manifest.");
-        if (_manifest.SchemaVersion != 1 || _manifest.EmbeddingTextVersion != EmbeddingDocuments.Version || _manifest.Model != options.EmbeddingModel)
-            throw new InvalidOperationException("Incompatible search index schema, embedding format or model. Select matching configuration or rebuild.");
-        _db = Path.Combine(options.IndexPath, "knowledge.sqlite");
-        _sqlite = new SqliteKnowledgeStore(_db);
+        // Defer file access until retrieval, so missing configuration yields a safe chat error.
+        _state = new Lazy<IndexState>(() =>
+        {
+            if (string.IsNullOrWhiteSpace(options.IndexPath)) throw new ArgumentException("Retrieval:IndexPath must select a completed search generation.");
+            var manifest = JsonSerializer.Deserialize<SearchIndexManifest>(File.ReadAllText(Path.Combine(options.IndexPath, "search-manifest.json")), SearchIndexBuilder.Json)
+                ?? throw new InvalidOperationException("Missing search manifest.");
+            if (manifest.SchemaVersion != 1 || manifest.EmbeddingTextVersion != EmbeddingDocuments.Version || manifest.Model != options.EmbeddingModel)
+                throw new InvalidOperationException("Incompatible search index schema, embedding format or model. Select matching configuration or rebuild.");
+            var db = Path.Combine(options.IndexPath, "knowledge.sqlite");
+            return new IndexState(manifest, db, new SqliteKnowledgeStore(db));
+        });
     }
     public async Task<KnowledgeIndexInfo> GetInfoAsync(CancellationToken cancellationToken)
     {

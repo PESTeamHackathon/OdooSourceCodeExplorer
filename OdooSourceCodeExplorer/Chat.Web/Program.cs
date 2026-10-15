@@ -1,5 +1,6 @@
 using Chat.Web.Components;
 using Chat.Infrastructure;
+using Chat.Infrastructure.Retrieval;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddCopilotChat(builder.Configuration);
+builder.Services.AddCodeRetrieval(builder.Configuration);
 
 var app = builder.Build();
 

@@ -1,14 +1,18 @@
-# Business Knowledge Chat — Milestones 1–3
+# Business Knowledge Chat — Milestones 1–4
 
-This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements local chat through the official GitHub Copilot SDK and independent Python source indexing. The chat does not yet consume the index. Application-specific questions should receive an explicit insufficient-evidence answer. See [Milestone 2 indexing instructions](INDEXING.md) for configuring a separate Odoo checkout, running the indexer, and inspecting its artifacts.
+For a step-by-step local demo, from Copilot authentication through indexing and asking the first question, follow [DEMO.md](DEMO.md).
 
-[Milestone 3 retrieval instructions](RETRIEVAL.md) cover local Ollama embeddings, Qdrant, SQLite FTS5, building a searchable generation, and testing semantic/keyword/hybrid retrieval through the console. Retrieval is not connected to chat yet.
+This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements source-based Odoo chat through the official GitHub Copilot SDK, independent Python indexing and hybrid retrieval. Chat now consumes a configured search generation and requires its expected application-version label. See [Milestone 4 setup and source-specific acceptance test](CODE_AWARE_CHAT.md), [source indexing](INDEXING.md) and [retrieval services](RETRIEVAL.md).
+
+[Milestone 3 retrieval instructions](RETRIEVAL.md) cover local Ollama embeddings, Qdrant, SQLite FTS5, building a searchable generation, and testing semantic/keyword/hybrid retrieval through the console. Those independent commands are still usable without Copilot.
 
 ## Architecture and minimum implementation
 
 ```text
 Blazor Interactive Server UI
     -> IChatService / ChatService (Chat.App)
+    -> ICodeRetriever / hybrid knowledge search
+    -> bounded current evidence and conversation context
     -> IAnswerGenerator (Chat.App)
     -> CopilotAnswerGenerator (Chat.Infrastructure)
     -> GitHub Copilot SDK / managed Copilot runtime
@@ -22,7 +26,7 @@ Project references:
 - `Chat.Indexer` -> `Chat.App` for chunk/retrieval contracts and `Chat.Infrastructure` for search integrations. It runs independently of the web runtime and never uses Copilot during indexing or retrieval.
 - `Chat.App.Tests` -> `Chat.App`, `Chat.Indexer`.
 
-`ChatMessage` and `ChatRole` describe the transcript. `IChatService` exposes history, sending and reset; `ChatService` validates questions and commits complete turns. `IAnswerGenerator` is the replaceable provider boundary. `AnswerGenerationException` carries safe errors. Infrastructure contains the SDK adapter, typed options and DI registration.
+`ChatMessage` and `ChatRole` describe the business-facing transcript. `ChatService` retrieves fresh evidence, enforces index-version compatibility and an evidence budget, then passes an internal `AnswerRequest` through `IAnswerGenerator`. Copilot returns structured claims with internal evidence IDs; `BusinessAnswerPolicy` checks their references/wording and renders business text. `AnswerGenerationException` carries safe errors. The scoped service retains an internal `LastTrace` for developer verification without exposing evidence through the UI contract.
 
 There is no conversation store abstraction yet: a scoped `ChatService` belongs to one Blazor circuit. Reloading or losing the circuit loses the UI history. History is limited to 20 turns, questions to 4,000 characters. Failed/canceled turns do not change history; overlapping sends and resets are rejected. A new SDK session receives the bounded transcript for each turn and is disposed afterward. The shared SDK client is disposed asynchronously by DI at shutdown.
 
@@ -84,6 +88,8 @@ dotnet run --project Chat.Web --launch-profile http
 
 Open http://localhost:5112. The HTTP launch profile is for local development. The HTTPS profile uses https://localhost:7003 and requires a trusted development certificate (`dotnet dev-certs https --trust`). Global Interactive Server rendering is configured on Routes and HeadOutlet.
 
+For code-aware answers also set `Retrieval__IndexPath` and `KnowledgeChat__ExpectedApplicationVersion`, and start Ollama/Qdrant as described in [CODE_AWARE_CHAT.md](CODE_AWARE_CHAT.md). A Copilot token exported in a terminal applies only to server processes started from that same terminal. No source checkout is required by the chat server.
+
 Configuration uses standard .NET providers. `Chat.Web/appsettings.json` includes:
 
 ```json
@@ -105,13 +111,13 @@ dotnet test OdooSourceCodeExplorer.sln
 
 The offline xUnit tests cover follow-up context, attachment validation, isolation, reset, failed/empty responses, cancellation, size/turn limits and overlapping operations. They do not contact Copilot or consume allowance.
 
-Milestone 1 browser verification confirmed input, submission through the service layers, and safe provider-unavailable errors while preserving the question. A successful authenticated model response was not verified in that check; complete the login steps above and the checks below before treating the live chat integration as operational. See [indexing verification](INDEXING.md#tests) for Milestone 2 results.
+Milestone 1 originally verified safe provider-unavailable errors only. Milestone 4 has now been exercised through the real Blazor interface with authenticated Copilot and the local Odoo search services; see [the acceptance test and current limitations](CODE_AWARE_CHAT.md). Offline tests remain independent of Copilot authentication and paid calls.
 
 After authenticating, exercise the real integration:
 
-1. Ask “What is a credit memo?” Expect a general business explanation.
-2. Ask “Summarize that in one sentence.” Expect it to use the previous exchange.
-3. Ask “What happens in our application when an order cannot be delivered?” Expect an explicit lack-of-evidence answer, without invented application rules.
+1. Ask “Can I cancel a locked sales order?” Expect the indexed lock restriction in business language.
+2. Ask “Summarize that in one sentence.” Expect it to use the previous exchange and retrieve fresh evidence.
+3. Ask about an unindexed process. Expect an explicit lack-of-evidence answer, without invented application rules.
 4. Start a new conversation. Previous messages should disappear.
 5. Send and cancel a request. Its question remains editable and the transcript is unchanged.
 6. If authentication is missing, usage is exhausted, or the model is unavailable, expect a safe error and a retryable question, without raw provider errors.
@@ -124,6 +130,6 @@ Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 M
 
 ## Scope and future integration
 
-The chat runtime has no repository access or retrieval integration. Milestone 2 adds an independent source indexer; Milestone 3 consumes those artifacts to build and search local embedding, vector and keyword indexes. Source indexing and retrieval remain separate from chat requests. CI/CD, production deployment, terminology mappings and relationship expansion remain outside the implemented scope.
+The chat runtime has no repository access. Milestone 2 adds an independent source indexer; Milestone 3 builds embedding/vector/keyword indexes from its artifacts; Milestone 4 retrieves their evidence during chat. Index construction remains outside chat requests. CI/CD, production deployment, terminology mappings, streaming and relationship expansion remain outside the implemented scope.
 
 This unauthenticated PoC is for local developer use. Production requires application authentication/authorization, conversation ownership, index access protection, source-sharing policy approval, and explicit validation of AI authentication, licensing and billing. A developer's personal Copilot subscription is not assumed to cover business users. Raw SDK errors and transcript content are not written to application logs; SDK-managed local data still requires protection.

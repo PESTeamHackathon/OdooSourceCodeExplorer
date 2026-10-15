@@ -5,6 +5,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0_Items", "0_Items", "{59CE
 		.gitignore = .gitignore
 		..\.gitignore = ..\.gitignore
 		..\README.md = ..\README.md
+		RETRIEVAL.md = RETRIEVAL.md
+		INDEXING.md = INDEXING.md
+		AGENTS.md = AGENTS.md
+		README.md = README.md
+		DEMO.md = DEMO.md
+		CODE_AWARE_CHAT.md = CODE_AWARE_CHAT.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Indexer", "Chat.Indexer\Chat.Indexer.csproj", "{6BFFAFE9-D0FD-4CE8-B774-8D550655BB05}"

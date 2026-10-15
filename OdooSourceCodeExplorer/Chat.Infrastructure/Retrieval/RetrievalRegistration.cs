@@ -6,7 +6,7 @@ namespace Chat.Infrastructure.Retrieval;
 
 public static class RetrievalRegistration
 {
-    // Opt-in for a future host. Chat.Web deliberately does not call this in Milestone 3.
+    // Used by the web composition root and available to other server-side hosts.
     public static IServiceCollection AddCodeRetrieval(this IServiceCollection services, IConfiguration configuration)
     {
         var options = configuration.GetSection("Retrieval").Get<RetrievalOptions>() ?? new();

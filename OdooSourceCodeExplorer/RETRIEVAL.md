@@ -1,6 +1,6 @@
 # Milestone 3 — local semantic and keyword retrieval
 
-This milestone adds retrieval infrastructure and an internal console diagnostic command. **The chat UI, chat orchestration and Copilot prompt are unchanged.** No retrieval endpoint exposes raw code to business users. No paid model API, Copilot call, Roslyn, terminology dictionary, relationship expansion or production deployment is introduced.
+Milestone 3 adds retrieval infrastructure and an internal console diagnostic command. Its commands still run independently of chat and do not call Copilot. [Milestone 4](CODE_AWARE_CHAT.md) now connects these services to code-aware chat; no retrieval endpoint exposes raw code to business users. No Roslyn, terminology dictionary, relationship expansion or production deployment is introduced.
 
 ## Start the required services
 
@@ -133,7 +133,7 @@ The default format uses Nomic's documented [document/query prefixes](https://hug
 
 Embedding text includes module/symbol names, class context and code, with camel/snake identifiers separated into words. Long chunks are covered by overlapping embedding windows; each vector points back to the original intact chunk. Windows are deduplicated back into chunk candidates. SQLite indexes symbols and body/context text using FTS5/BM25, gives exact symbols precedence over incidental mentions, and treats user input as quoted tokens rather than executable FTS/SQL syntax. Common question words are omitted from keyword queries. This is simple hybrid retrieval, without hand-written business synonyms or AI-generated descriptions.
 
-An opt-in `AddCodeRetrieval(configuration)` DI registration is available for a future host; **Chat.Web does not invoke it**. Retrieval consumes only deployed search artifacts and services. Hash/count checks are intentionally straightforward for the PoC and run per retrieval; larger indexes may need validated-generation caching later.
+`AddCodeRetrieval(configuration)` is used by Chat.Web in Milestone 4 and remains available to other hosts. Retrieval consumes only deployed search artifacts and services. Hash/count checks are intentionally straightforward for the PoC and run per retrieval; larger indexes may need validated-generation caching later.
 
 ## Validation and limits
 
@@ -155,4 +155,4 @@ Verified locally: all **50 xUnit tests pass**. The three-file Odoo subset at com
 
 These are retrieval smoke checks, not proof that complete business workflows can already be answered.
 
-Semantic nearest neighbours can be irrelevant, and fusion scores are rankings rather than confidence or proof of a business rule. A small source selection may omit related workflows and all XML/CSV behavior. Dense window results are oversampled before chunk deduplication but may return fewer distinct chunks than the requested limit. The indexer still does not resolve dynamic Odoo inheritance/calls. Milestone 4 must enforce evidence sufficiency and business-oriented answer generation before exposing this through chat. Production authentication, index-access authorization and provider licensing remain separate future work.
+Semantic nearest neighbours can be irrelevant, and fusion scores are rankings rather than confidence or proof of a business rule. A small source selection may omit related workflows and all XML/CSV behavior. Dense window results are oversampled before chunk deduplication but may return fewer distinct chunks than the requested limit. The indexer still does not resolve dynamic Odoo inheritance/calls. Milestone 4 adds evidence-oriented answer instructions and output validation; see its documented limits. Production authentication, index-access authorization and provider licensing remain separate future work.
