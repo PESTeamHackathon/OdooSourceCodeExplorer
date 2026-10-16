@@ -13,6 +13,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0_Items", "0_Items", "{59CE
 		CODE_AWARE_CHAT.md = CODE_AWARE_CHAT.md
 		.env.example = .env.example
 		.env.local = .env.local
+		EXPLORATION.md = EXPLORATION.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Indexer", "Chat.Indexer\Chat.Indexer.csproj", "{6BFFAFE9-D0FD-4CE8-B774-8D550655BB05}"
@@ -31,6 +32,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "1_Scripts", "1_Scripts", "{
 		scripts\prepare.sh = scripts\prepare.sh
 		scripts\run.sh = scripts\run.sh
 		scripts\test-workflows.sh = scripts\test-workflows.sh
+		scripts\explore.sh = scripts\explore.sh
 	EndProjectSection
 EndProject
 Global

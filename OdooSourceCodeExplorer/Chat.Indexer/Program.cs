@@ -10,6 +10,8 @@ if (args.Contains("--help"))
         dotnet run --project Chat.Indexer -- [options]
         dotnet run --project Chat.Indexer -- build-search --artifact <source-index> --search-output <external-folder>
         dotnet run --project Chat.Indexer -- search --index <search-index> --question <text> [--mode hybrid|semantic|keyword]
+        dotnet run --project Chat.Indexer -- explore --source <odoo-root> --question <business-question>
+          Isolated Copilot investigation; no Ollama, Qdrant or index required. Existing chat is unchanged.
           --module <odoo-module> --limit <1-20> --expected-version <tag> --format json
           --source <checkout-root>     SourceRepository:Path
           --output <external-folder>   Indexing:OutputPath (outside both repositories)
@@ -19,7 +21,8 @@ if (args.Contains("--help"))
         Standard .NET keys are also accepted, for example:
           --Indexing:IncludePaths:0 addons/sale --Indexing:IncludePaths:1 addons/stock
         Environment prefix: BUSINESSCHAT_ (e.g. BUSINESSCHAT_SourceRepository__Path).
-        Only tracked UTF-8 .py files are indexed. No source code is executed.
+        Indexing selects tracked UTF-8 .py files. Exploration reads local .py/.xml/.csv files.
+        No source code is executed.
         """);
     return 0;
 }
@@ -29,7 +32,7 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 try
 {
     var configArgs = args.ToList();
-    var command = configArgs.FirstOrDefault() is "build-search" or "search" ? configArgs[0] : "index";
+    var command = configArgs.FirstOrDefault() is "build-search" or "search" or "explore" ? configArgs[0] : "index";
     if (command != "index") configArgs.RemoveAt(0);
     string? configPath = null;
     string? include = null;
@@ -63,6 +66,11 @@ try
             ["--format"] = "Retrieval:Format"
         }).Build();
     using var configurationLifetime = configuration as IDisposable;
+    if (command == "explore")
+    {
+        await ExplorationCommand.RunAsync(configuration, stop.Token);
+        return 0;
+    }
     if (command != "index")
     {
         await RetrievalCommands.RunAsync(command, configuration, stop.Token);
@@ -85,7 +93,9 @@ try
 }
 catch (OperationCanceledException)
 {
-    Console.Error.WriteLine("Operation canceled; no completed index was published by an interrupted build.");
+    Console.Error.WriteLine(args.FirstOrDefault() == "explore"
+        ? "Investigation canceled; no answer was published."
+        : "Operation canceled; no completed index was published by an interrupted build.");
     return 130;
 }
 catch (Exception ex) when (ex is ArgumentException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or System.FormatException or HttpRequestException or JsonException or Microsoft.Data.Sqlite.SqliteException)
