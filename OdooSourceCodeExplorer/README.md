@@ -2,9 +2,9 @@
 
 For a step-by-step local demo, from Copilot authentication through indexing and asking the first question, follow [DEMO.md](DEMO.md).
 
-For the isolated hackathon comparison, see [agentic local source exploration](EXPLORATION.md). Its opt-in console command leaves the existing RAG chatbot unchanged.
+The chatbot defaults to RAG. For the opt-in `KnowledgeChat:UseAgenticExploration` backend, launch commands and source/runtime completeness rules, see [agentic chatbot setup](AGENTIC_CHAT.md). The [console explorer](EXPLORATION.md) remains available independently.
 
-This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements source-based Odoo chat through the official GitHub Copilot SDK, independent Python indexing and hybrid retrieval. Chat now consumes a configured search generation and requires its expected application-version label. See [Milestone 4 setup and source-specific acceptance test](CODE_AWARE_CHAT.md), [source indexing](INDEXING.md) and [retrieval services](RETRIEVAL.md).
+This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements source-based Odoo chat through the official GitHub Copilot SDK, independent Python indexing and hybrid retrieval. In default RAG mode, chat consumes a configured search generation and requires its expected application-version label. See [Milestone 4 setup and source-specific acceptance test](CODE_AWARE_CHAT.md), [source indexing](INDEXING.md) and [retrieval services](RETRIEVAL.md).
 
 [Milestone 3 retrieval instructions](RETRIEVAL.md) cover local Ollama embeddings, Qdrant, SQLite FTS5, building a searchable generation, and testing semantic/keyword/hybrid retrieval through the console. Those independent commands are still usable without Copilot.
 

@@ -3,8 +3,22 @@ using Chat.App.Retrieval;
 namespace Chat.App;
 
 // Register per conversation (a Blazor circuit in this milestone), never as a singleton.
-public sealed class ChatService(IAnswerGenerator answerGenerator, ICodeRetriever retriever, KnowledgeChatOptions options) : IChatService
+public sealed class ChatService : IChatService
 {
+    private readonly IAnswerGenerator? _answerGenerator;
+    private readonly ICodeRetriever? _retriever;
+    private readonly KnowledgeChatOptions? _options;
+    private readonly IConversationAnswerer? _conversationAnswerer;
+
+    public ChatService(IAnswerGenerator answerGenerator, ICodeRetriever retriever, KnowledgeChatOptions options)
+    {
+        _answerGenerator = answerGenerator;
+        _retriever = retriever;
+        _options = options;
+    }
+
+    public ChatService(IConversationAnswerer conversationAnswerer) => _conversationAnswerer = conversationAnswerer;
+
     public const int MaxQuestionLength = 4_000;
     public const int MaxTurns = 20;
     private IReadOnlyList<ChatMessage> _messages = Array.Empty<ChatMessage>();
@@ -35,52 +49,62 @@ public sealed class ChatService(IAnswerGenerator answerGenerator, ICodeRetriever
                 throw new InvalidOperationException("This conversation has too many attached files. Start a new conversation to continue.");
 
             ChatMessage[] context = [.. _messages, new(ChatRole.User, question.Trim(), attachments.Count == 0 ? null : [.. attachments])];
-            RetrievalResult retrieved;
-            using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-            {
-                deadline.CancelAfter(TimeSpan.FromSeconds(options.RetrievalTimeoutSeconds));
-                try
-                {
-                    if (string.IsNullOrWhiteSpace(options.ExpectedApplicationVersion))
-                        throw new InvalidOperationException("An expected application version is required for knowledge chat.");
-                    retrieved = await retriever.RetrieveAsync(new(BuildRetrievalQuestion(question), options.RetrievalLimit,
-                        ExpectedApplicationVersion: options.ExpectedApplicationVersion), deadline.Token);
-                    if (retrieved.Index.ApplicationVersion != options.ExpectedApplicationVersion)
-                        throw new InvalidOperationException("Knowledge version mismatch.");
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception ex)
-                {
-                    throw new AnswerGenerationException("Application knowledge is unavailable or incompatible. Ask the developer to check the selected knowledge version and local search services, then retry.", ex);
-                }
-            }
-            var selected = new List<RetrievedChunk>();
-            var usedCharacters = 0;
-            foreach (var hit in retrieved.Hits)
-            {
-                var size = hit.Evidence.Content.Length + hit.Evidence.Context.Length;
-                if (size + usedCharacters > options.MaxEvidenceCharacters) continue;
-                selected.Add(hit);
-                usedCharacters += size;
-            }
-            var request = new AnswerRequest(Array.AsReadOnly(context), retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count);
-            var draft = selected.Count == 0 ? new AnswerDraft("insufficient", []) : await answerGenerator.GenerateAsync(request, cancellationToken);
-            var answer = BusinessAnswerPolicy.Render(draft, request);
+            var result = _conversationAnswerer is not null
+                ? await _conversationAnswerer.AnswerAsync(Array.AsReadOnly(context), cancellationToken)
+                : await AnswerFromIndexAsync(context, question, cancellationToken);
+            var answer = result.Text;
             cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(answer))
                 throw new InvalidOperationException("The answer provider returned an empty response. Please try again.");
 
             // Commit a complete turn only after success; failed or canceled turns are retryable.
             _messages = Array.AsReadOnly<ChatMessage>([.. context, new(ChatRole.Assistant, answer)]);
-            var accepted = answer != BusinessAnswerPolicy.Insufficient && answer != BusinessAnswerPolicy.Conflicting;
-            LastTrace = new(retrieved.Index, selected.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath, h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(),
-                accepted ? (draft.Claims ?? []).SelectMany(c => c.EvidenceIds ?? []).Distinct().ToArray() : [],
-                accepted ? draft.Status : answer == BusinessAnswerPolicy.Conflicting ? "conflicting" : "insufficient", request.EvidenceOmitted);
+            LastTrace = result.Trace;
         }
         finally
         {
             Volatile.Write(ref _busy, 0);
         }
+    }
+
+    private async Task<ConversationAnswer> AnswerFromIndexAsync(ChatMessage[] context, string question, CancellationToken cancellationToken)
+    {
+        RetrievalResult retrieved;
+        using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            deadline.CancelAfter(TimeSpan.FromSeconds(_options!.RetrievalTimeoutSeconds));
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_options!.ExpectedApplicationVersion))
+                    throw new InvalidOperationException("An expected application version is required for knowledge chat.");
+                retrieved = await _retriever!.RetrieveAsync(new(BuildRetrievalQuestion(question), _options!.RetrievalLimit,
+                    ExpectedApplicationVersion: _options!.ExpectedApplicationVersion), deadline.Token);
+                if (retrieved.Index.ApplicationVersion != _options!.ExpectedApplicationVersion)
+                    throw new InvalidOperationException("Knowledge version mismatch.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                throw new AnswerGenerationException("Application knowledge is unavailable or incompatible. Ask the developer to check the selected knowledge version and local search services, then retry.", ex);
+            }
+        }
+        var selected = new List<RetrievedChunk>();
+        var usedCharacters = 0;
+        foreach (var hit in retrieved.Hits)
+        {
+            var size = hit.Evidence.Content.Length + hit.Evidence.Context.Length;
+            if (size + usedCharacters > _options!.MaxEvidenceCharacters) continue;
+            selected.Add(hit);
+            usedCharacters += size;
+        }
+        var request = new AnswerRequest(Array.AsReadOnly(context), retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count);
+        var draft = selected.Count == 0 ? new AnswerDraft("insufficient", []) : await _answerGenerator!.GenerateAsync(request, cancellationToken);
+        var answer = BusinessAnswerPolicy.Render(draft, request);
+        var accepted = answer != BusinessAnswerPolicy.Insufficient && answer != BusinessAnswerPolicy.Conflicting;
+        var trace = new ChatEvidenceTrace(retrieved.Index, selected.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath, h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(),
+            accepted ? (draft.Claims ?? []).SelectMany(c => c.EvidenceIds ?? []).Distinct().ToArray() : [],
+            accepted ? draft.Status : answer == BusinessAnswerPolicy.Conflicting ? "conflicting" : "insufficient", request.EvidenceOmitted);
+        return new(answer, trace);
     }
 
     public void Clear()

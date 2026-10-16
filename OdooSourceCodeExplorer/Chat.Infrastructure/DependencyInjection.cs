@@ -1,4 +1,7 @@
 using Chat.App;
+using Chat.Infrastructure.Exploration;
+using Chat.Infrastructure.Retrieval;
+using Microsoft.Extensions.Logging;
 using GitHub.Copilot;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,10 +39,26 @@ public static class DependencyInjection
         });
         services.AddSingleton<IAnswerGenerator, CopilotAnswerGenerator>();
         var knowledgeOptions = configuration.GetSection("KnowledgeChat").Get<KnowledgeChatOptions>() ?? new();
-        if (knowledgeOptions.RetrievalLimit is < 1 or > 20 || knowledgeOptions.MaxEvidenceCharacters is < 1000 or > 100_000 || knowledgeOptions.RetrievalTimeoutSeconds is < 1 or > 120)
+        if (!knowledgeOptions.UseAgenticExploration && (knowledgeOptions.RetrievalLimit is < 1 or > 20 || knowledgeOptions.MaxEvidenceCharacters is < 1000 or > 100_000 || knowledgeOptions.RetrievalTimeoutSeconds is < 1 or > 120))
             throw new ArgumentException("Invalid KnowledgeChat retrieval limit, evidence budget or timeout.");
         services.AddSingleton(knowledgeOptions);
-        services.AddScoped<IChatService, ChatService>();
+        if (knowledgeOptions.UseAgenticExploration)
+        {
+            var repositoryPath = configuration["SourceRepository:Path"] ?? "";
+            if (!Path.IsPathFullyQualified(repositoryPath) || !Directory.Exists(repositoryPath))
+                throw new ArgumentException("Agentic exploration requires an existing absolute SourceRepository:Path.");
+            services.AddSingleton(sp => new CopilotSourceExplorer(sp.GetRequiredService<CopilotClient>(),
+                sp.GetRequiredService<IOptions<CopilotOptions>>().Value, sp.GetRequiredService<IAnswerGenerator>()));
+            services.AddSingleton<IConversationAnswerer>(sp => new AgenticConversationAnswerer(
+                sp.GetRequiredService<CopilotSourceExplorer>(), repositoryPath, sp.GetRequiredService<ILogger<AgenticConversationAnswerer>>()));
+            services.AddScoped<IChatService>(sp => new ChatService(sp.GetRequiredService<IConversationAnswerer>()));
+        }
+        else
+        {
+            services.AddCodeRetrieval(configuration);
+            services.AddScoped<IChatService>(sp => new ChatService(sp.GetRequiredService<IAnswerGenerator>(),
+                sp.GetRequiredService<Chat.App.Retrieval.ICodeRetriever>(), knowledgeOptions));
+        }
         return services;
     }
 }

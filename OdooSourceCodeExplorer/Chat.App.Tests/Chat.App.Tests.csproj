@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Using Include="Xunit" />
     <ProjectReference Include="../Chat.App/Chat.App.csproj" />
     <ProjectReference Include="../Chat.Indexer/Chat.Indexer.csproj" />

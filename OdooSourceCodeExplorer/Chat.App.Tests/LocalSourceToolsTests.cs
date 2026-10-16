@@ -94,12 +94,40 @@ public sealed class LocalSourceToolsTests : IDisposable
     {
         var source = new LocalSourceTools(_root);
         for (var i = 0; i < 40; i++) await source.ReadAsync("addons/sale/order.py");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => source.SearchAsync("cancel"));
+        Assert.Contains("budget exhausted", (await source.SearchAsync("cancel")).Note);
+        Assert.Single(source.Evidence); // Repeated reads consume operations but never duplicate evidence.
         using var stop = new CancellationTokenSource();
         var cancelled = new LocalSourceTools(_root, stop.Token);
         stop.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.ReadAsync("addons/sale/order.py"));
         Assert.Empty(cancelled.Evidence);
+    }
+
+
+    [Fact]
+    public async Task DiagnosticsShowDiscoveryInputsAndReadRangesWithoutSourceText()
+    {
+        var diagnostics = new List<string>();
+        var source = new LocalSourceTools(_root, progress: diagnostics.Add);
+        await source.SearchAsync("cancel", "addons/sale");
+        await source.ReadAsync("addons/sale/order.py", 1, 3);
+        Assert.Contains(diagnostics, d => d.Contains("term=\"cancel\"") && d.Contains("scope=\"addons/sale\""));
+        Assert.Contains(diagnostics, d => d.Contains("order.py\":1-3"));
+        Assert.DoesNotContain(diagnostics, d => d.Contains("self.delivery") || d.Contains("class Order"));
+        Assert.Empty((await source.ReadAsync("addons/sale/order.py", 2, 1)).Content);
+        Assert.Empty((await source.SearchAsync("CANCEL", "addons/sale")).Hits);
+        Assert.Single(source.Evidence);
+    }
+
+    [Fact]
+    public async Task OverlappingReadsCannotReregisterAlreadyCoveredLinesIncludingEndOfFile()
+    {
+        var source = new LocalSourceTools(_root);
+        await source.ReadAsync("addons/sale/order.py", 1, 1);
+        await source.ReadAsync("addons/sale/order.py", 2, 3);
+        Assert.Null((await source.ReadAsync("addons/sale/order.py", 1, 4)).EvidenceId);
+        Assert.Null((await source.ReadAsync("addons/sale/order.py", 1, 200)).EvidenceId);
+        Assert.Equal(2, source.Evidence.Count);
     }
 
     public void Dispose() => Directory.Delete(_temporary, true);

@@ -1,3 +1,5 @@
+> For the optional agentic chatbot (no index/search services), see [AGENTIC_CHAT.md](AGENTIC_CHAT.md). This guide describes the default RAG workflow.
+
 # Local demo — separate preparation and runtime (macOS)
 
 Knowledge preparation is an independent, relatively expensive operation. Starting chat reuses its completed knowledge generation and never indexes source or generates document embeddings. Ollama remains running for **query embeddings**. Copilot receives selected evidence and the conversation for hosted reasoning; this is not an offline chatbot.

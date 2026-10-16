@@ -13,13 +13,25 @@ cleanup() {
   if [ "${prepare_lock_owned:-0}" == 1 ]; then rmdir "$DEMO_ROOT/prepare.lock" 2>/dev/null || true; fi
 }
 load_configuration() {
+  local configuration_mode="${1:-rag}"
   local env_file="${BUSINESSCHAT_ENV_FILE:-$ROOT/.env.local}"
   [ -f "$env_file" ] || fail 'Copy .env.example to .env.local and configure it first.'
   # This is deliberately a trusted, user-owned Bash file, never repository content from Odoo.
   set -a
   source "$env_file"
   set +a
-  for prerequisite in dotnet curl jq shasum; do need "$prerequisite"; done
+  export KnowledgeChat__UseAgenticExploration="${KnowledgeChat__UseAgenticExploration:-false}"
+  case "$(printf '%s' "$KnowledgeChat__UseAgenticExploration" | tr '[:upper:]' '[:lower:]')" in
+    true) KnowledgeChat__UseAgenticExploration=true;;
+    false) KnowledgeChat__UseAgenticExploration=false;;
+    *) fail 'KnowledgeChat__UseAgenticExploration must be true or false.';;
+  esac
+  need dotnet
+  if [ "$configuration_mode" == runtime ] && [ "$KnowledgeChat__UseAgenticExploration" == true ]; then
+    [[ "$(dotnet --version)" == 10.* ]] || fail '.NET 10 SDK is required.'
+    return
+  fi
+  for prerequisite in curl jq shasum; do need "$prerequisite"; done
   [[ "$(dotnet --version)" == 10.* ]] || fail '.NET 10 SDK is required.'
   DEMO_ROOT="${DEMO_ROOT:-$HOME/BusinessChatDemo}"
   [[ "$DEMO_ROOT" == /* ]] || fail 'DEMO_ROOT must be absolute.'

@@ -38,6 +38,22 @@ public sealed class CopilotAnswerGenerator(
         No tools are available. Do not request filesystem, shell, network, or code execution access.
         """;
 
+    // Opt-in only for the local explorer. RAG requests retain their original instructions and payload.
+    private const string ExplorationInstructions = """
+
+        For this local exploration request, explorationCompleteness separates source gaps from runtime unknowns.
+        If SourceComplete is true and RequiresRuntimeConfirmation is false, unknown enabled modules/settings alone
+        do NOT require partial status. Give a supported CONDITIONAL explanation when all relevant source behavior
+        is established. Say "If inventory integration is enabled..." or equivalent for optional behavior.
+        If material source behavior remains unverified, keep partial status and explain specific business gaps.
+        If this is about a particular running database and runtime facts are unknown, state that its outcome cannot
+        be confirmed. Never infer active modules/settings from source. The host adds one configuration caveat;
+        do not add a duplicate caveat or generic runtime disclaimer yourself. Preserve source conditions/exceptions
+        exactly: do not turn a qualified restriction into a blanket rule. A selected call does not establish all its
+        outcomes when the called implementation is unread. Completeness review is guidance, not source evidence;
+        never upgrade missing source behavior merely because the review thinks it complete.
+        """;
+
     private static readonly JsonElement ResponseSchema = JsonDocument.Parse("""
         {"type":"object","properties":{
           "status":{"type":"string","enum":["supported","partial","insufficient","conflicting"]},
@@ -60,7 +76,7 @@ public sealed class CopilotAnswerGenerator(
             {
                 Model = string.IsNullOrWhiteSpace(options.Value.Model) ? null : options.Value.Model,
                 AvailableTools = [],
-                SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Replace, Content = Instructions },
+                SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Replace, Content = Instructions + (request.ExplorationContext is null ? "" : ExplorationInstructions) },
                 InfiniteSessions = new InfiniteSessionConfig { Enabled = false },
 #pragma warning disable GHCP001 // SDK 1.0.22 marks its typed permission decisions experimental.
                 OnPermissionRequest = (_, _) => Task.FromResult<PermissionDecision>(
@@ -84,9 +100,7 @@ public sealed class CopilotAnswerGenerator(
                 .ToList<Attachment>();
             try
             {
-                var response = await session.SendAndWaitAsync(new MessageOptions
-                {
-                    Prompt = JsonSerializer.Serialize(new
+                var payload = JsonSerializer.SerializeToElement(new
                     {
                         conversation = JsonSerializer.Deserialize<JsonElement>(transcript),
                         index = request.Index,
@@ -97,7 +111,12 @@ public sealed class CopilotAnswerGenerator(
                             h.Evidence.QualifiedName, h.Evidence.StartLine, h.Evidence.EndLine,
                             h.Evidence.Context, h.Evidence.Content
                         })
-                    }),
+                    });
+                var fields = payload.EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value);
+                if (request.ExplorationContext is not null) fields["explorationCompleteness"] = request.ExplorationContext;
+                var response = await session.SendAndWaitAsync(new MessageOptions
+                {
+                    Prompt = JsonSerializer.Serialize(fields),
 #pragma warning disable GHCP001 // Structured response schema is experimental in the pinned SDK.
                     ResponseSchema = ResponseSchema,
 #pragma warning restore GHCP001
