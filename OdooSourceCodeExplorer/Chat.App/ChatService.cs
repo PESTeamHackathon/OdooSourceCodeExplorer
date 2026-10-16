@@ -5,19 +5,22 @@ namespace Chat.App;
 // Register per conversation (a Blazor circuit in this milestone), never as a singleton.
 public sealed class ChatService : IChatService
 {
-    private readonly IAnswerGenerator? _answerGenerator;
-    private readonly ICodeRetriever? _retriever;
-    private readonly KnowledgeChatOptions? _options;
-    private readonly IConversationAnswerer? _conversationAnswerer;
+    private readonly IConversationAnswerer? _indexed;
+    private readonly IConversationAnswerer? _exploration;
+    public ChatCapabilities Capabilities { get; }
 
-    public ChatService(IAnswerGenerator answerGenerator, ICodeRetriever retriever, KnowledgeChatOptions options)
+    public ChatService(ChatCapabilities capabilities, IConversationAnswerer? indexed, IConversationAnswerer? exploration)
     {
-        _answerGenerator = answerGenerator;
-        _retriever = retriever;
-        _options = options;
+        Capabilities = capabilities;
+        _indexed = indexed;
+        _exploration = exploration;
     }
 
-    public ChatService(IConversationAnswerer conversationAnswerer) => _conversationAnswerer = conversationAnswerer;
+    public ChatService(IAnswerGenerator answerGenerator, ICodeRetriever retriever, KnowledgeChatOptions options)
+        : this(new(true, false, ChatMode.Indexed), new IndexedConversationAnswerer(answerGenerator, retriever, options), null) { }
+
+    public ChatService(IConversationAnswerer conversationAnswerer)
+        : this(new(false, true, ChatMode.Exploration), null, conversationAnswerer) { }
 
     public const int MaxQuestionLength = 4_000;
     public const int MaxTurns = 20;
@@ -31,8 +34,16 @@ public sealed class ChatService : IChatService
     public Task SendAsync(string question, CancellationToken cancellationToken = default) =>
         SendAsync(question, [], cancellationToken);
 
-    public async Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, CancellationToken cancellationToken = default)
+    public Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, CancellationToken cancellationToken = default) =>
+        SendAsync(question, attachments, Capabilities.DefaultMode, cancellationToken);
+
+    public async Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, ChatMode mode, CancellationToken cancellationToken = default)
     {
+        if (!Capabilities.IsAvailable(mode))
+            throw new ArgumentException("This answer mode is unavailable. Ask the developer to enable it.", nameof(mode));
+        var answerer = mode == ChatMode.Indexed ? _indexed : _exploration;
+        if (answerer is null)
+            throw new InvalidOperationException("This answer mode is unavailable. Ask the developer to check its configuration.");
         if (string.IsNullOrWhiteSpace(question) || question.Length > MaxQuestionLength)
             throw new ArgumentException($"Enter a question between 1 and {MaxQuestionLength} characters.", nameof(question));
         ValidateAttachments(attachments);
@@ -49,9 +60,7 @@ public sealed class ChatService : IChatService
                 throw new InvalidOperationException("This conversation has too many attached files. Start a new conversation to continue.");
 
             ChatMessage[] context = [.. _messages, new(ChatRole.User, question.Trim(), attachments.Count == 0 ? null : [.. attachments])];
-            var result = _conversationAnswerer is not null
-                ? await _conversationAnswerer.AnswerAsync(Array.AsReadOnly(context), cancellationToken)
-                : await AnswerFromIndexAsync(context, question, cancellationToken);
+            var result = await answerer.AnswerAsync(Array.AsReadOnly(context), cancellationToken);
             var answer = result.Text;
             cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(answer))
@@ -67,61 +76,11 @@ public sealed class ChatService : IChatService
         }
     }
 
-    private async Task<ConversationAnswer> AnswerFromIndexAsync(ChatMessage[] context, string question, CancellationToken cancellationToken)
-    {
-        RetrievalResult retrieved;
-        using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-        {
-            deadline.CancelAfter(TimeSpan.FromSeconds(_options!.RetrievalTimeoutSeconds));
-            try
-            {
-                if (string.IsNullOrWhiteSpace(_options!.ExpectedApplicationVersion))
-                    throw new InvalidOperationException("An expected application version is required for knowledge chat.");
-                retrieved = await _retriever!.RetrieveAsync(new(BuildRetrievalQuestion(question), _options!.RetrievalLimit,
-                    ExpectedApplicationVersion: _options!.ExpectedApplicationVersion), deadline.Token);
-                if (retrieved.Index.ApplicationVersion != _options!.ExpectedApplicationVersion)
-                    throw new InvalidOperationException("Knowledge version mismatch.");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex)
-            {
-                throw new AnswerGenerationException("Application knowledge is unavailable or incompatible. Ask the developer to check the selected knowledge version and local search services, then retry.", ex);
-            }
-        }
-        var selected = new List<RetrievedChunk>();
-        var usedCharacters = 0;
-        foreach (var hit in retrieved.Hits)
-        {
-            var size = hit.Evidence.Content.Length + hit.Evidence.Context.Length;
-            if (size + usedCharacters > _options!.MaxEvidenceCharacters) continue;
-            selected.Add(hit);
-            usedCharacters += size;
-        }
-        var request = new AnswerRequest(Array.AsReadOnly(context), retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count);
-        var draft = selected.Count == 0 ? new AnswerDraft("insufficient", []) : await _answerGenerator!.GenerateAsync(request, cancellationToken);
-        var answer = BusinessAnswerPolicy.Render(draft, request);
-        var accepted = answer != BusinessAnswerPolicy.Insufficient && answer != BusinessAnswerPolicy.Conflicting;
-        var trace = new ChatEvidenceTrace(retrieved.Index, selected.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath, h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(),
-            accepted ? (draft.Claims ?? []).SelectMany(c => c.EvidenceIds ?? []).Distinct().ToArray() : [],
-            accepted ? draft.Status : answer == BusinessAnswerPolicy.Conflicting ? "conflicting" : "insufficient", request.EvidenceOmitted);
-        return new(answer, trace);
-    }
-
     public void Clear()
     {
         Enter();
         try { _messages = Array.Empty<ChatMessage>(); LastTrace = null; }
         finally { Volatile.Write(ref _busy, 0); }
-    }
-
-    private string BuildRetrievalQuestion(string question)
-    {
-        var previous = _messages.Where(m => m.Role == ChatRole.User).TakeLast(3)
-            .Select(m => m.Content[..Math.Min(500, m.Content.Length)]);
-        var context = string.Join("\n", previous);
-        var remaining = MaxQuestionLength - question.Length - 60;
-        if (context.Length == 0 || remaining <= 0) return question;
-        return "Earlier user questions:\n" + context[..Math.Min(context.Length, remaining)] + "\nCurrent question:\n" + question;
     }
 
     private static void ValidateAttachments(IReadOnlyList<ChatAttachment> attachments)

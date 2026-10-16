@@ -17,6 +17,21 @@ public sealed record ChatEvidenceTrace(KnowledgeIndexInfo Index, IReadOnlyList<E
 public sealed class KnowledgeChatOptions
 {
     public bool UseAgenticExploration { get; set; } = false;
+    // Nullable overrides preserve legacy single-backend launches.
+    public bool? IndexedAnswersEnabled { get; set; }
+    public bool? ExplorationEnabled { get; set; }
+    public ChatMode? DefaultMode { get; set; }
+
+    public ChatCapabilities GetCapabilities()
+    {
+        var capabilities = new ChatCapabilities(IndexedAnswersEnabled ?? !UseAgenticExploration,
+            ExplorationEnabled ?? UseAgenticExploration,
+            DefaultMode ?? (UseAgenticExploration ? ChatMode.Exploration : ChatMode.Indexed));
+        if (!capabilities.IsAvailable(capabilities.DefaultMode))
+            throw new ArgumentException("KnowledgeChat:DefaultMode must select an enabled answer mode.");
+        return capabilities;
+    }
+
     public string ExpectedApplicationVersion { get; set; } = "";
     public int RetrievalLimit { get; set; } = 12;
     public int MaxEvidenceCharacters { get; set; } = 32_000;

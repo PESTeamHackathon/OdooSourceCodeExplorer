@@ -2,7 +2,7 @@
 
 For a step-by-step local demo, from Copilot authentication through indexing and asking the first question, follow [DEMO.md](DEMO.md).
 
-The chatbot defaults to RAG. For the opt-in `KnowledgeChat:UseAgenticExploration` backend, launch commands and source/runtime completeness rules, see [agentic chatbot setup](AGENTIC_CHAT.md). The [console explorer](EXPLORATION.md) remains available independently.
+The chatbot defaults to evidence-grounded indexed RAG (Thinking off). Enable both backends to let users select bounded source exploration with the **Thinking** toggle beside Send while keeping one conversation. For configuration migration, dual-mode dependencies, version-comparison limitations and launch commands, see [agentic chatbot setup](AGENTIC_CHAT.md). The [console explorer](EXPLORATION.md) remains available independently.
 
 This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects. It implements source-based Odoo chat through the official GitHub Copilot SDK, independent Python indexing and hybrid retrieval. In default RAG mode, chat consumes a configured search generation and requires its expected application-version label. See [Milestone 4 setup and source-specific acceptance test](CODE_AWARE_CHAT.md), [source indexing](INDEXING.md) and [retrieval services](RETRIEVAL.md).
 
@@ -13,7 +13,9 @@ This extends the existing `OdooSourceCodeExplorer.sln` and its `Chat.*` projects
 ```text
 Blazor Interactive Server UI
     -> IChatService / ChatService (Chat.App)
-    -> ICodeRetriever / hybrid knowledge search
+    -> per-request ChatMode / stateless IConversationAnswerer
+    -> indexed: ICodeRetriever / hybrid knowledge search
+       Thinking: bounded CopilotSourceExplorer
     -> bounded current evidence and conversation context
     -> IAnswerGenerator (Chat.App)
     -> CopilotAnswerGenerator (Chat.Infrastructure)
@@ -28,7 +30,7 @@ Project references:
 - `Chat.Indexer` -> `Chat.App` for chunk/retrieval contracts and `Chat.Infrastructure` for search integrations. It runs independently of the web runtime and never uses Copilot during indexing or retrieval.
 - `Chat.App.Tests` -> `Chat.App`, `Chat.Indexer`.
 
-`ChatMessage` and `ChatRole` describe the business-facing transcript. `ChatService` retrieves fresh evidence, enforces index-version compatibility and an evidence budget, then passes an internal `AnswerRequest` through `IAnswerGenerator`. Copilot returns structured claims with internal evidence IDs; `BusinessAnswerPolicy` checks their references/wording and renders business text. `AnswerGenerationException` carries safe errors. The scoped service retains an internal `LastTrace` for developer verification without exposing evidence through the UI contract.
+`ChatMessage` and `ChatRole` describe the business-facing transcript. `ChatService` owns one transcript and captures a provider-independent `ChatMode` per request. It routes to a stateless `IConversationAnswerer`: `IndexedConversationAnswerer` retrieves fresh evidence, enforces index-version compatibility and an evidence budget, then passes an internal `AnswerRequest` through `IAnswerGenerator`; the exploration adapter calls the existing bounded source explorer. Immutable `ChatCapabilities` exposes availability and the server default to the UI. Copilot returns structured claims with internal evidence IDs; `BusinessAnswerPolicy` checks their references/wording and renders business text. `AnswerGenerationException` carries safe errors. The scoped service retains an internal `LastTrace` for developer verification without exposing evidence through the UI contract.
 
 There is no conversation store abstraction yet: a scoped `ChatService` belongs to one Blazor circuit. Reloading or losing the circuit loses the UI history. History is limited to 20 turns, questions to 4,000 characters. Failed/canceled turns do not change history; overlapping sends and resets are rejected. A new SDK session receives the bounded transcript for each turn and is disposed afterward. The shared SDK client is disposed asynchronously by DI at shutdown.
 
@@ -128,10 +130,10 @@ Model instructions guide evidence handling and business language; they are not a
 
 ## Attachments
 
-Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 MB) and UTF-8 text files (txt, md, csv, json, xml, code and similar, max 200 KB). The type is derived from the file extension and validated in `ChatService`; a conversation holds at most 20 MB of attachments. Images are sent to Copilot as inline base64 blobs; text file content is embedded in the transcript. Both are labeled as untrusted user data, tools stay disabled, and nothing is written to disk. Attachments remain in the conversation so follow-ups can refer to them, which means they are resent (and billed) on each turn. Whether images are understood depends on the selected model's vision support.
+Users can attach up to 5 files per message: images (PNG, JPG, GIF, WebP, max 5 MB) and UTF-8 text files (txt, md, csv, json, xml, code and similar, max 200 KB). The type is derived from the file extension and validated in `ChatService`; a conversation holds at most 20 MB of attachments. Images are sent to Copilot as inline base64 blobs; text file content is embedded in the transcript. Both are labeled as untrusted user data and remain in the same transcript when switching modes. The final answer generator has no tools; Thinking uses only the existing confined read-only exploration tools. The app does not save attachment files. Attachments remain in the conversation so follow-ups can refer to them, which means they are resent (and billed) on each turn. Whether images are understood depends on the selected model's vision support.
 
 ## Scope and future integration
 
-The chat runtime has no repository access. Milestone 2 adds an independent source indexer; Milestone 3 builds embedding/vector/keyword indexes from its artifacts; Milestone 4 retrieves their evidence during chat. Index construction remains outside chat requests. CI/CD, production deployment, terminology mappings, streaming and relationship expansion remain outside the implemented scope.
+Indexed chat needs no source checkout. Thinking explicitly requires read-only access to the separate local developer/server checkout; its provenance is an unverified live checkout, not the indexed snapshot. Milestone 2 adds an independent source indexer; Milestone 3 builds embedding/vector/keyword indexes from its artifacts; Milestone 4 retrieves their evidence during chat. Index construction remains outside chat requests. CI/CD, production deployment, terminology mappings, streaming and relationship expansion remain outside the implemented scope.
 
 This unauthenticated PoC is for local developer use. Production requires application authentication/authorization, conversation ownership, index access protection, source-sharing policy approval, and explicit validation of AI authentication, licensing and billing. A developer's personal Copilot subscription is not assumed to cover business users. Raw SDK errors and transcript content are not written to application logs; SDK-managed local data still requires protection.

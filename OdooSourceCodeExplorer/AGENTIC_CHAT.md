@@ -1,12 +1,42 @@
-# Local chatbot backend selection
+# Thinking toggle and local source exploration
 
-The Blazor chatbot selects one backend at startup using standard .NET configuration:
+The Blazor chat has a **Thinking** switch beside Send. Off uses the version-checked indexed RAG pipeline; on uses the bounded live source explorer. Both ground application claims in evidence and acknowledge missing/conflicting information. Thinking investigates related workflows and usually takes longer; it can still return a partial answer or misinterpret evidence. It does not guarantee a complete or more accurate answer.
 
-```json
-{ "KnowledgeChat": { "UseAgenticExploration": false } }
+The selection stays within the conversation, including follow-ups and attachments. Each send captures the selection; the switch, input, attachments and Send are disabled while busy. Cancel leaves the pending question and attachments available for retry without committing an incomplete turn. Busy messages describe answering or investigation without internal tool details. Reloading loses the selection and conversation. An unavailable choice is disabled with a safe explanation; the server also rejects unavailable/invalid modes and never falls back.
+
+## Configuration and migration
+
+Availability and default selection are separate server settings under `KnowledgeChat`:
+
+| Setting | Meaning |
+| --- | --- |
+| `IndexedAnswersEnabled` | Enables the existing RAG backend and its dependencies. |
+| `ExplorationEnabled` | Enables bounded source exploration and requires an existing absolute `SourceRepository:Path` on the server. |
+| `DefaultMode` | `Indexed` (Thinking off) or `Exploration` (Thinking on); must select an enabled backend. |
+| `UseAgenticExploration` | Legacy defaults only: absent/false means indexed only, default Indexed; true means exploration only, default Exploration. |
+
+Each new setting overrides its corresponding legacy-derived default independently. With no settings the switch is off and only indexed answers are enabled. Explicitly enabling exploration does not change the default. To migrate from legacy true to dual mode with Thinking off, set all three new settings below. Existing legacy true/false single-backend launches continue to work; no shared configuration changes when a user switches modes. Invalid defaults, retrieval limits/URLs or missing exploration paths fail startup; index/service compatibility is also checked at request time. Availability describes configured capabilities, not live service health; request failures remain safe and retryable.
+
+For **dual mode**, add to the trusted `.env.local`:
+
+```sh
+KnowledgeChat__IndexedAnswersEnabled=true
+KnowledgeChat__ExplorationEnabled=true
+KnowledgeChat__DefaultMode=Indexed
+SourceRepository__Path='/absolute/path/to/odoo'
+# Optional existing provider timeout (10–600 seconds):
+# Copilot__TimeoutSeconds=240
 ```
 
-`false` is the default and retains the existing RAG pipeline. `true` uses the existing bounded source explorer. There is no UI selector and no fallback between backends. Restart the web process after changing the flag; rebuild after code changes because the scripts use `--no-build`.
+Run `bash scripts/prepare.sh` once if indexed knowledge is not already prepared, then `dotnet build OdooSourceCodeExplorer.sln` and `bash scripts/run.sh`. Preparation is an explicit developer action, never performed by sending a question or by `run.sh`. Dual mode requires the prepared index/version, Ollama/model, Qdrant, source checkout, and Copilot authentication/network access. `run.sh` checks both dependency sets and starts the existing search services when required. Stop/restart for configuration changes; scripts use `--no-build`. Direct `dotnet run` reads standard .NET configuration, not `.env.local`; export settings and supply `Retrieval__IndexPath` and `KnowledgeChat__ExpectedApplicationVersion` yourself.
+
+Explicit single-backend configurations are supported: indexed only uses `IndexedAnswersEnabled=true`, `ExplorationEnabled=false`, `DefaultMode=Indexed`; exploration only uses `false`, `true`, `Exploration` respectively. Remove any new overrides when using the legacy examples below. Exploration-only launch skips index/search-service prerequisites; indexed-only chat does not need a source checkout. The standalone `scripts/explore.sh` command always explores source independently of these web settings.
+
+## Version and provenance limitation
+
+Indexed answering reads the configured completed generation and checks its expected application-version label on every request. Its trace retains generation, commit and dirty metadata. Exploration reads the **current live checkout** and retains the existing `unverified-live-checkout` provenance marker; it does not verify Git identity or a stable snapshot. It must not inherit the index's commit/version label. Switching modes preserves conversational context, not source-version equivalence; previous assistant messages are context, never fresh evidence.
+
+Before manually comparing modes, require the same application version and verify the checkout HEAD against the selected `search-manifest.json` `info.gitCommit` plus the source generation's `manifest.json`. Check working-tree status and the recorded input hashes as well: a matching commit alone does not establish equality for modified inputs. Prefer a clean checkout and an index built from that clean commit, keep the checkout unchanged during comparison, and account for the indexed scope (exploration can inspect additional files). If they do not match, do not treat different answers as a comparison of the same application snapshot. No automatic index rebuilding, checkout pinning or production version-management system is added.
 
 ## Agentic demonstration
 
@@ -63,6 +93,8 @@ RAG still requires the prepared state, matching application version and index fi
 
 ## Shared implementation and answer completeness
 
+`ChatMode` and immutable `ChatCapabilities` live in Chat.App. The scoped `ChatService` routes each request to a stateless `IConversationAnswerer`; `IndexedConversationAnswerer` retains the existing retriever/generator/version/evidence policy, and `AgenticConversationAnswerer` retains the existing explorer. There is one transcript and no second stateful chat service.
+
 `ChatService` remains scoped per Blazor circuit and owns input validation, attachments, history, overlap protection and atomic turn commits. It delegates agentic turns through the provider-independent `IConversationAnswerer` contract. Infrastructure's thin adapter calls the same `CopilotSourceExplorer` used by `scripts/explore.sh`, with conversation history. Every request creates fresh tools, evidence and budget; earlier assistant messages help resolve follow-ups but never become source evidence. Failures and cancellation do not commit turns.
 
 The existing tool confinement and read-only allowlist are unchanged: approved Python/XML/CSV searches and reads only, no shell, editing, arbitrary filesystem tools or execution of Odoo code. No new packages, database detection or production infrastructure are added. Offline DI tests reference the installed ASP.NET shared framework.
@@ -91,7 +123,15 @@ bash scripts/explore.sh "What happens when I cancel a sales order?"
 
 This command always explores source, independently of the web flag. Its stderr trace and stdout business answer remain separate. Source claims must be compared to the actual read evidence: activity counts and valid evidence IDs are not proof of semantic accuracy. Source-only analysis cannot verify deployed code, installed modules, database settings or dynamic extension order. The bounded investigation can still end partially, and the model can misinterpret a qualified rule.
 
-### Results in this workspace
+### Thinking toggle verification (2026-10-16)
+
+The solution build completed with zero warnings/errors. Modified scripts passed `bash -n` and `git diff --check` passed. Only the requested existing startup-selection test source was updated for legacy defaults and explicit overrides; no automated tests were run for this task.
+
+A temporary dual-mode `scripts/run.sh` launch on localhost:5113 used existing credentials without changing `.env.local`. Both dependency sets passed startup checks. In the actual Blazor interface, Thinking started off; the indexed question returned the safe insufficient-evidence answer. Switching on for “What if I unlock it first?” kept the earlier question and answer. Busy controls were disabled with the investigation message. Cancellation preserved the transcript and editable question; retry kept Thinking selected and passed the same two prior messages to exploration. Switching back off for a further follow-up used indexed answering in the same transcript and again acknowledged insufficient evidence. The indexed-only UI disabled Thinking and displayed the safe availability explanation. Exploration-only launch skipped all index/search checks and started with Thinking on, disabled, explaining that quick answers were unavailable. The final responsive layout was visually checked. Temporary web servers were stopped after verification. The retried exploration completed with a partial business answer and explicit unresolved questions/runtime caveat. These observations verify routing and UI behavior, not the accuracy of every generated claim. Source/index baseline commits matched, but input hashes and working-tree equality were not established, so this was not a controlled snapshot comparison. Attachment handling remains the existing implementation; file uploads were not separately exercised in this check.
+
+### Historical results before the Thinking toggle
+
+These checks describe the previous startup-only implementation, not verification of the current toggle.
 
 - Final solution build: **zero warnings and errors**. Full offline suite: **98 passed**, including all existing RAG tests and the new mode-selection, conversation and completeness cases. Shell syntax checks and `git diff --check` passed.
 - Authenticated Blazor testing used a separate server on port 5113 and a private temporary environment file loading the existing `.env.local`; the actual `.env.local` and the existing server were left alone. The temporary demo server was stopped after verification.

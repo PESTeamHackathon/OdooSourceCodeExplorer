@@ -26,8 +26,24 @@ load_configuration() {
     false) KnowledgeChat__UseAgenticExploration=false;;
     *) fail 'KnowledgeChat__UseAgenticExploration must be true or false.';;
   esac
+  # Resolve the same legacy defaults and explicit overrides as KnowledgeChatOptions.
+  export KnowledgeChat__IndexedAnswersEnabled="${KnowledgeChat__IndexedAnswersEnabled:-$([ "$KnowledgeChat__UseAgenticExploration" == true ] && printf false || printf true)}"
+  export KnowledgeChat__ExplorationEnabled="${KnowledgeChat__ExplorationEnabled:-$KnowledgeChat__UseAgenticExploration}"
+  export KnowledgeChat__DefaultMode="${KnowledgeChat__DefaultMode:-$([ "$KnowledgeChat__UseAgenticExploration" == true ] && printf Exploration || printf Indexed)}"
+  for mode_key in KnowledgeChat__IndexedAnswersEnabled KnowledgeChat__ExplorationEnabled; do
+    case "$(printf '%s' "${!mode_key}" | tr '[:upper:]' '[:lower:]')" in
+      true) export "$mode_key=true";;
+      false) export "$mode_key=false";;
+      *) fail "$mode_key must be true or false.";;
+    esac
+  done
+  case "$(printf '%s' "$KnowledgeChat__DefaultMode" | tr '[:upper:]' '[:lower:]')" in
+    indexed) [ "$KnowledgeChat__IndexedAnswersEnabled" == true ] || fail 'Default Indexed mode must be enabled.';;
+    exploration) [ "$KnowledgeChat__ExplorationEnabled" == true ] || fail 'Default Exploration mode must be enabled.';;
+    *) fail 'KnowledgeChat__DefaultMode must be Indexed or Exploration.';;
+  esac
   need dotnet
-  if [ "$configuration_mode" == runtime ] && [ "$KnowledgeChat__UseAgenticExploration" == true ]; then
+  if [ "$configuration_mode" == runtime ] && [ "$KnowledgeChat__IndexedAnswersEnabled" == false ]; then
     [[ "$(dotnet --version)" == 10.* ]] || fail '.NET 10 SDK is required.'
     return
   fi

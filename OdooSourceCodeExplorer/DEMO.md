@@ -1,3 +1,5 @@
+For the per-question **Thinking** toggle, dual-mode launch settings and source/index version comparison requirements, see [AGENTIC_CHAT.md](AGENTIC_CHAT.md). This indexed preparation guide remains applicable whenever indexed answers are enabled; enabling Thinking also requires the separate live checkout at runtime.
+
 > For the optional agentic chatbot (no index/search services), see [AGENTIC_CHAT.md](AGENTIC_CHAT.md). This guide describes the default RAG workflow.
 
 # Local demo — separate preparation and runtime (macOS)

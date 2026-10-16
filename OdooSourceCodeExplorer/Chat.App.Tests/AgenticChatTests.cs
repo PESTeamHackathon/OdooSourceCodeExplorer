@@ -25,11 +25,17 @@ public sealed class AgenticChatTests : IDisposable
     }).Build();
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("false")]
-    public async Task DefaultAndFalseSelectRag(string? enabled)
+    [InlineData(null, null)]
+    [InlineData("false", "false")]
+    public async Task LegacyDefaultsAndExplicitOverridesSelectIndexedAnswers(string? enabled, string? explorationEnabled)
     {
         var configuration = Configuration(enabled);
+        if (explorationEnabled is not null)
+        {
+            configuration["KnowledgeChat:IndexedAnswersEnabled"] = "true";
+            configuration["KnowledgeChat:ExplorationEnabled"] = explorationEnabled;
+            configuration["KnowledgeChat:DefaultMode"] = "Indexed";
+        }
         configuration["SourceRepository:Path"] = "/nonexistent-unused-source";
         var services = new ServiceCollection().AddLogging().AddCopilotChat(configuration);
         Assert.DoesNotContain(services, s => s.ServiceType == typeof(IConversationAnswerer));
@@ -40,14 +46,18 @@ public sealed class AgenticChatTests : IDisposable
         await using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         await scope.ServiceProvider.GetRequiredService<IChatService>().SendAsync("Cancel?");
+        Assert.Equal(new ChatCapabilities(true, false, ChatMode.Indexed), scope.ServiceProvider.GetRequiredService<IChatService>().Capabilities);
         Assert.Null(generator.Request!.ExplorationContext);
         Assert.Equal("rag-fixture", generator.Request.Index.IndexId);
     }
 
     [Fact]
-    public async Task AgenticSelectionNeedsNoRagServicesAndKeepsConversationScopesAndFollowUps()
+    public async Task ExplicitExplorationOnlyNeedsNoRagServicesAndKeepsConversationScopesAndFollowUps()
     {
-        var config = Configuration("true");
+        var config = Configuration("false");
+        config["KnowledgeChat:IndexedAnswersEnabled"] = "false";
+        config["KnowledgeChat:ExplorationEnabled"] = "true";
+        config["KnowledgeChat:DefaultMode"] = "Exploration";
         config["Retrieval:OllamaUrl"] = "invalid-unused-url";
         config["Retrieval:IndexPath"] = "missing-index";
         config["KnowledgeChat:ExpectedApplicationVersion"] = "";
@@ -61,6 +71,7 @@ public sealed class AgenticChatTests : IDisposable
         using var secondScope = provider.CreateScope();
         var first = firstScope.ServiceProvider.GetRequiredService<IChatService>();
         var second = secondScope.ServiceProvider.GetRequiredService<IChatService>();
+        Assert.Equal(new ChatCapabilities(false, true, ChatMode.Exploration), first.Capabilities);
         await first.SendAsync("Cancel a sales order?");
         await first.SendAsync("What if a delivery is already completed?");
         Assert.Equal(3, explorer.Messages!.Count);

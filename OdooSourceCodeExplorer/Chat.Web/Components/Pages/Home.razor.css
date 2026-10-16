@@ -171,8 +171,9 @@ h1.hand {
 
 .chat-input {
     display: flex;
+    flex-direction: column;
     gap: .75rem;
-    align-items: flex-end;
+    align-items: stretch;
 }
 
     .chat-input textarea {
@@ -181,12 +182,16 @@ h1.hand {
     }
 
 .chat-compose {
-    flex: 1;
+    width: 100%;
+    flex: none;
     min-width: 0;
 }
 
 .chat-actions {
     display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: .5rem;
 }
 
@@ -292,4 +297,20 @@ h1.hand {
     .chat-input .chat-compose {
         flex: none;
     }
+}
+
+.thinking-choice {
+    margin-right: auto;
+    max-width: 240px;
+    font-size: .9rem;
+}
+
+.thinking-choice small {
+    display: block;
+    color: #626774;
+    font-size: .75rem;
+}
+
+.thinking-choice .form-check {
+    margin-bottom: .15rem;
 }

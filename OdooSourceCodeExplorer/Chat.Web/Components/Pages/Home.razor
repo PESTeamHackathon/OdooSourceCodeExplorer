@@ -45,7 +45,7 @@
                         <div class="message-text">@_pendingQuestion</div>
                         <AttachmentList Attachments="_pendingAttachments"/>
                     </article>
-                    <p class="thinking" role="status">Preparing an answer…</p>
+                    <p class="thinking" role="status">@(_pendingMode == ChatMode.Exploration ? "Investigating related workflows…" : "Preparing an evidence-based answer…")</p>
                 }
             </section>
         }
@@ -82,6 +82,16 @@
                     <InputFile class="visually-hidden" multiple accept="@ChatAttachment.AcceptedExtensions"
                                OnChange="AddFilesAsync" disabled="@(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage)"/>
                 </label>
+                <div class="thinking-choice">
+                    <label class="form-check form-switch" for="thinking">
+                        <input id="thinking" class="form-check-input" type="checkbox" role="switch"
+                               @bind="_thinking" disabled="@(_busy || !Chat.Capabilities.IndexedAvailable || !Chat.Capabilities.ExplorationAvailable)"
+                               aria-describedby="thinking-help thinking-availability" />
+                        Thinking
+                    </label>
+                    <small id="thinking-help">Investigate related workflows for a more detailed answer. Takes longer.</small>
+                    <small id="thinking-availability">@AvailabilityMessage</small>
+                </div>
                 @if (_busy)
                 {
                     <button class="btn btn-light" type="button" @onclick="Cancel">Cancel</button>
@@ -119,11 +129,19 @@
     private bool _scrollToLatest;
     private string? _error;
     private bool _busy;
+    private bool _thinking;
+    private ChatMode _pendingMode;
+    private string AvailabilityMessage => !Chat.Capabilities.ExplorationAvailable
+        ? "Thinking is unavailable in this session."
+        : !Chat.Capabilities.IndexedAvailable ? "Thinking is required in this session; quick answers are unavailable." : "";
+
+    protected override void OnInitialized() => _thinking = Chat.Capabilities.DefaultMode == ChatMode.Exploration;
     private CancellationTokenSource? _request;
 
     private async Task SendAsync()
     {
         if (_busy || string.IsNullOrWhiteSpace(_question)) return;
+        _pendingMode = _thinking ? ChatMode.Exploration : ChatMode.Indexed;
         _busy = true;
         _error = null;
         _pendingQuestion = _question;
@@ -133,7 +151,7 @@
         _request = request;
         try
         {
-            await Chat.SendAsync(_question, _pendingAttachments, request.Token);
+            await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, request.Token);
             _question = "";
             _attachments = [];
         }
