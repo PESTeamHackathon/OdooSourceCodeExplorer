@@ -56,7 +56,7 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
         => await ExploreAsync(repositoryPath, [new(Chat.App.ChatRole.User, question)], progress, cancellationToken);
 
     public async Task<ExplorationAnswer> ExploreAsync(string repositoryPath, IReadOnlyList<Chat.App.ChatMessage> messages,
-        Action<string>? progress = null, CancellationToken cancellationToken = default)
+        Action<string>? progress = null, CancellationToken cancellationToken = default, bool pureMode = false)
     {
         var question = messages.LastOrDefault(m => m.Role == Chat.App.ChatRole.User)?.Content ?? "";
         var conversation = messages.Select(m => new { role = m.Role.ToString(), content = m.Content }).ToArray();
@@ -117,12 +117,14 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
                         async (previous, ct) =>
                         {
                             var reviewed = await reviewer.ReviewAsync(question, conversation, source, previous, ct);
+                            // In pure mode RunAsync validates and stops on an invalid review instead of failing.
+                            if (pureMode) return reviewed;
                             ExplorationLoop.Validate(reviewed, source);
                             progress?.Invoke($"Coverage reviewed: sourceComplete={ExplorationLoop.SourceComplete(reviewed)}; scope={reviewed.QuestionScope}; source gaps={reviewed.Gaps.Count(g => g.Kind == "source")}; runtime gaps={reviewed.Gaps.Count(g => g.Kind == "runtime")}.");
                             latestReview = reviewed;
                             return reviewed;
                         },
-                        progress, investigationDeadline.Token);
+                        progress, investigationDeadline.Token, pureMode);
                 }
                 catch (Exception ex) when ((ex is OperationCanceledException or TimeoutException) && !cancellationToken.IsCancellationRequested)
                 {
@@ -132,16 +134,17 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
                     progress?.Invoke("Investigation stopped: investigation time limit; reserved time for partial synthesis.");
                     outcome = new(latestReview, "investigation time limit", false);
                 }
-                var request = ExplorationLoop.WithCompleteness(ExplorationLoop.CreateRequest(messages, source), outcome, source);
+                // Pure mode only affects the final answer; investigation still needs its tool instructions.
+                var request = ExplorationLoop.WithCompleteness(ExplorationLoop.CreateRequest(messages, source), outcome, source) with { PureMode = pureMode };
                 progress?.Invoke($"Writing business answer from {source.Evidence.Count} read excerpts with tools disabled. Shared operations used: {budget.Operations}.");
                 if (!budget.TryUse()) throw new AnswerGenerationException("The exploration budget was exhausted before answer generation.");
                 var generator = answerGenerator ?? new CopilotAnswerGenerator(client, Options.Create(options), NullLogger<CopilotAnswerGenerator>.Instance);
-                var draft = source.Evidence.Count == 0 ? new AnswerDraft("insufficient", [])
+                var draft = source.Evidence.Count == 0 && !pureMode ? new AnswerDraft("insufficient", [])
                     : await generator.GenerateAsync(request, deadline.Token);
                 if (!outcome.Complete && draft.Status == "supported") draft = draft with { Status = "partial" };
                 var validated = BusinessAnswerPolicy.Render(draft, request);
                 var accepted = validated != BusinessAnswerPolicy.Insufficient && validated != BusinessAnswerPolicy.Conflicting;
-                var answer = ExplorationLoop.Render(draft, request, outcome, source);
+                var answer = pureMode ? validated : ExplorationLoop.Render(draft, request, outcome, source);
                 deadline.Token.ThrowIfCancellationRequested();
                 return new(answer, source.Evidence.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath,
                     h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(), source.SearchCalls, source.ReadCalls)

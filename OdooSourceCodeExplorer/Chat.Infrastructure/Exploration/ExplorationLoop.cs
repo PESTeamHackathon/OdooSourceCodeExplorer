@@ -18,7 +18,7 @@ public static class ExplorationLoop
     public static async Task<InvestigationOutcome> RunAsync(LocalSourceTools source,
         Func<ExplorationReview?, CancellationToken, Task> investigate,
         Func<ExplorationReview?, CancellationToken, Task<ExplorationReview>> review,
-        Action<string>? progress, CancellationToken ct)
+        Action<string>? progress, CancellationToken ct, bool pureMode = false)
     {
         var budget = source.Budget;
         ExplorationReview? ledger = null;
@@ -30,8 +30,15 @@ public static class ExplorationLoop
             await investigate(ledger, ct);
             ct.ThrowIfCancellationRequested();
             if (!budget.TryUse(reserve: 1)) return Stop("shared operation limit", false);
-            ledger = await review(ledger, ct);
-            Validate(ledger, source);
+            ExplorationReview reviewed;
+            try
+            {
+                reviewed = await review(ledger, ct);
+                Validate(reviewed, source);
+            }
+            // Pure mode answers from the evidence read so far instead of failing on an unusable review.
+            catch (AnswerGenerationException) when (pureMode) { return Stop("coverage review could not be verified", false); }
+            ledger = reviewed;
             ct.ThrowIfCancellationRequested();
             var complete = IsComplete(ledger);
             if (complete) return Stop("relevant coverage established", true);

@@ -76,7 +76,10 @@ public sealed class CopilotAnswerGenerator(
             {
                 Model = string.IsNullOrWhiteSpace(options.Value.Model) ? null : options.Value.Model,
                 AvailableTools = [],
-                SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Replace, Content = Instructions + (request.ExplorationContext is null ? "" : ExplorationInstructions) },
+                // Pure mode replaces the system message with nothing: Copilot receives no instructions at all.
+                SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Replace, Content = request.PureMode
+                    ? ""
+                    : Instructions + (request.ExplorationContext is null ? "" : ExplorationInstructions) },
                 InfiniteSessions = new InfiniteSessionConfig { Enabled = false },
 #pragma warning disable GHCP001 // SDK 1.0.22 marks its typed permission decisions experimental.
                 OnPermissionRequest = (_, _) => Task.FromResult<PermissionDecision>(
@@ -118,15 +121,19 @@ public sealed class CopilotAnswerGenerator(
                 {
                     Prompt = JsonSerializer.Serialize(fields),
 #pragma warning disable GHCP001 // Structured response schema is experimental in the pinned SDK.
-                    ResponseSchema = ResponseSchema,
+                    ResponseSchema = request.PureMode ? null : ResponseSchema,
 #pragma warning restore GHCP001
                     Attachments = images.Count == 0 ? null : images
                 }, TimeSpan.FromSeconds(options.Value.TimeoutSeconds), deadline.Token);
 
                 if (string.IsNullOrWhiteSpace(response?.Data.Content))
                     throw new AnswerGenerationException("No answer was received. Please try again.");
-                return JsonSerializer.Deserialize<AnswerDraft>(response.Data.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                if (request.PureMode)
+                    return new AnswerDraft(AnswerDraft.Pure, [new(response.Data.Content, [])]);
+                var draft = JsonSerializer.Deserialize<AnswerDraft>(response.Data.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                     ?? throw new AnswerGenerationException("The answer could not be verified. Please try again.");
+                // Only a pure-mode request may produce an unvalidated draft.
+                return draft.Status == AnswerDraft.Pure ? draft with { Status = "insufficient" } : draft;
             }
             catch
             {

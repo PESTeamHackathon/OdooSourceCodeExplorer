@@ -35,6 +35,37 @@ public sealed class CodeAwareChatTests
     }
 
     [Fact]
+    public async Task PureModeReachesGeneratorAndReturnsRawTextUnchecked()
+    {
+        const string raw = "Call `action_cancel` on `sale.order`; see addons/sale/models/sale_order.py.";
+        var generator = new FakeGenerator { Draft = new(AnswerDraft.Pure, [new(raw, [])]) };
+        var chat = Create(new FakeRetriever(), generator);
+        await chat.SendAsync("How do I cancel?", [], ChatMode.Indexed, pureMode: true);
+        Assert.True(generator.Request!.PureMode);
+        Assert.Equal(raw, chat.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task PureModeAsksCopilotEvenWithoutEvidence()
+    {
+        var generator = new FakeGenerator { Draft = new(AnswerDraft.Pure, [new("General answer.", [])]) };
+        var chat = Create(new FakeRetriever { Hits = [] }, generator);
+        await chat.SendAsync("Anything?", [], ChatMode.Indexed, pureMode: true);
+        Assert.NotNull(generator.Request);
+        Assert.Equal("General answer.", chat.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task NormalModeNeverPublishesAPureDraft()
+    {
+        var generator = new FakeGenerator { Draft = new(AnswerDraft.Pure, [new("Unchecked text.", [])]) };
+        var chat = Create(new FakeRetriever(), generator);
+        await Assert.ThrowsAsync<AnswerGenerationException>(() => chat.SendAsync("How do I cancel?"));
+        Assert.False(generator.Request!.PureMode);
+        Assert.Empty(chat.Messages);
+    }
+
+    [Fact]
     public async Task NoEvidenceSkipsCopilotAndAcknowledgesInsufficiency()
     {
         var generator = new FakeGenerator();

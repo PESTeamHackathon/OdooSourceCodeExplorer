@@ -5,7 +5,10 @@ namespace Chat.App;
 // Stateless indexed answering; conversation ownership stays with ChatService.
 public sealed class IndexedConversationAnswerer(IAnswerGenerator _answerGenerator, ICodeRetriever _retriever, KnowledgeChatOptions _options) : IConversationAnswerer
 {
-    public async Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, CancellationToken cancellationToken = default)
+    public Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, CancellationToken cancellationToken = default) =>
+        AnswerAsync(context, false, cancellationToken);
+
+    public async Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, bool pureMode, CancellationToken cancellationToken = default)
     {
         var question = context[^1].Content;
         RetrievalResult retrieved;
@@ -36,8 +39,9 @@ public sealed class IndexedConversationAnswerer(IAnswerGenerator _answerGenerato
             selected.Add(hit);
             usedCharacters += size;
         }
-        var request = new AnswerRequest(context, retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count);
-        var draft = selected.Count == 0 ? new AnswerDraft("insufficient", []) : await _answerGenerator.GenerateAsync(request, cancellationToken);
+        var request = new AnswerRequest(context, retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count, PureMode: pureMode);
+        // Pure mode asks Copilot even without evidence; normal mode never lets it answer unsupported.
+        var draft = selected.Count == 0 && !pureMode ? new AnswerDraft("insufficient", []) : await _answerGenerator.GenerateAsync(request, cancellationToken);
         var answer = BusinessAnswerPolicy.Render(draft, request);
         var accepted = answer != BusinessAnswerPolicy.Insufficient && answer != BusinessAnswerPolicy.Conflicting;
         var trace = new ChatEvidenceTrace(retrieved.Index, selected.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath, h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(),

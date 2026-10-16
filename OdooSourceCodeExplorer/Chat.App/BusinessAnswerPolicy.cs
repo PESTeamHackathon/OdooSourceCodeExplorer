@@ -9,6 +9,10 @@ public static class BusinessAnswerPolicy
 
     public static string Render(AnswerDraft draft, AnswerRequest request)
     {
+        if (draft.Status == AnswerDraft.Pure)
+            return request.PureMode && draft.Claims is [{ Text: var text }] && !string.IsNullOrWhiteSpace(text)
+                ? text
+                : throw new AnswerGenerationException("The answer could not be verified. Please try again.");
         if (draft.Status == "insufficient") return Insufficient;
         if (draft.Status == "conflicting") return Conflicting;
         if (draft.Status is not ("supported" or "partial") || draft.Claims is null || draft.Claims.Count is < 1 or > 12)

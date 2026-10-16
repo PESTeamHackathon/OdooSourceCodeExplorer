@@ -165,8 +165,19 @@ h1.hand {
     }
 
 .thinking {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
     color: #714B67;
     font-size: .9rem;
+}
+
+.elapsed {
+    background: #F4EEF2;
+    border-radius: 999px;
+    padding: .05rem .55rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
 }
 
 .chat-input {
@@ -299,8 +310,14 @@ h1.hand {
     }
 }
 
-.thinking-choice {
+.mode-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.25rem;
     margin-right: auto;
+}
+
+.thinking-choice {
     max-width: 240px;
     font-size: .9rem;
 }

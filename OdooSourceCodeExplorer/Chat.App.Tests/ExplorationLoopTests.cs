@@ -56,6 +56,29 @@ public sealed class ExplorationLoopTests : IDisposable
         Assert.Equal(7, budget.Operations); // Two investigation turns, two reviews and three source operations.
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidReviewFailsNormallyButStopsInvestigationInPureMode(bool pureMode)
+    {
+        var source = new LocalSourceTools(_root);
+        // Resolved coverage that cites no read evidence breaks the reviewer's contract.
+        var invalid = new ExplorationReview(ExplorationLoop.Areas.Select(a => new CoverageItem(a, "resolved", "Looks complete.", [])).ToArray(), []);
+        Task<InvestigationOutcome> Run() => ExplorationLoop.RunAsync(source, async (_, _) => await source.ReadAsync("order.py", 1, 2),
+            (_, _) => Task.FromResult(invalid), null, default, pureMode);
+
+        if (!pureMode)
+        {
+            await Assert.ThrowsAsync<AnswerGenerationException>(Run);
+            return;
+        }
+        var outcome = await Run();
+        Assert.False(outcome.Complete);
+        Assert.Null(outcome.Review);
+        Assert.Equal("coverage review could not be verified", outcome.StopReason);
+        Assert.Single(source.Evidence);
+    }
+
     [Fact]
     public async Task SufficientCoverageStopsImmediatelyWithoutMinimumFilesOrCalls()
     {
