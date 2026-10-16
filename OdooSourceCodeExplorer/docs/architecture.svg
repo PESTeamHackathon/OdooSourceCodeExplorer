@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="740" viewBox="0 0 1300 740">
+<style>text{font-family:Inter,"Helvetica Neue",Arial,sans-serif}.h{font-size:30px;font-weight:700;fill:#111827}.sub{font-size:16px;fill:#4B5563}.t{font-size:19px;font-weight:700;fill:#111827}.s{font-size:15px;fill:#4B5563}.l{font-size:14px;font-weight:600}</style><defs>
+<marker id="et" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0E9384"/></marker>
+<marker id="st" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M10 0L0 5L10 10z" fill="#0E9384"/></marker>
+<marker id="eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6B7280"/></marker>
+<marker id="sg" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M10 0L0 5L10 10z" fill="#6B7280"/></marker>
+<marker id="eo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#D97706"/></marker>
+<marker id="so" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M10 0L0 5L10 10z" fill="#D97706"/></marker>
+<marker id="eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563EB"/></marker>
+<marker id="sb" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M10 0L0 5L10 10z" fill="#2563EB"/></marker>
+</defs><rect width="1300" height="740" fill="#fff"/>
+<text x="40" y="54" class="h">Odoo Source Code Explorer — Thinking OFF</text>
+<text x="40" y="82" class="sub">Quick answer: a local AI model finds the matching code, then GitHub Copilot writes the answer in one call.</text>
+<rect x="50" y="200" width="200" height="130" rx="14" fill="#fff" stroke="#6B7280" stroke-width="2.5"/>
+<text x="150.0" y="238" class="t" text-anchor="middle">User</text>
+<text x="150.0" y="264" class="s" text-anchor="middle">Asks a question</text>
+<text x="150.0" y="285" class="s" text-anchor="middle">in the browser</text>
+<rect x="320" y="130" width="440" height="430" rx="16" fill="#F0FAF8" stroke="#0E9384" stroke-width="2.5"/>
+<text x="540" y="170" class="t" text-anchor="middle">Chat app</text>
+<text x="540" y="198" class="s" text-anchor="middle">Takes the question</text>
+<text x="540" y="220" class="s" text-anchor="middle">Finds the matching code</text>
+<text x="540" y="242" class="s" text-anchor="middle">Sends question + code to Copilot</text>
+<text x="540" y="264" class="s" text-anchor="middle">Checks the answer</text>
+<rect x="350" y="400" width="380" height="130" rx="14" fill="#fff" stroke="#2563EB" stroke-width="2.5"/>
+<text x="540.0" y="438" class="t" text-anchor="middle">Local AI model</text>
+<text x="540.0" y="464" class="s" text-anchor="middle">Ollama · nomic-embed-text</text>
+<text x="540.0" y="485" class="s" text-anchor="middle">Runs on your machine</text>
+<text x="540.0" y="506" class="s" text-anchor="middle">Turns text into search vectors</text>
+<rect x="860" y="200" width="390" height="130" rx="14" fill="#fff" stroke="#6B7280" stroke-width="2.5"/>
+<text x="1055.0" y="238" class="t" text-anchor="middle">GitHub Copilot</text>
+<text x="1055.0" y="264" class="s" text-anchor="middle">Cloud AI model</text>
+<text x="1055.0" y="285" class="s" text-anchor="middle">Writes the answer in one call</text>
+<rect x="860" y="400" width="180" height="130" rx="14" fill="#fff" stroke="#0E9384" stroke-width="2.5"/>
+<text x="950.0" y="438" class="t" text-anchor="middle">Search index</text>
+<text x="950.0" y="464" class="s" text-anchor="middle">Code chunks</text>
+<text x="950.0" y="485" class="s" text-anchor="middle">Qdrant · SQLite</text>
+<rect x="1070" y="400" width="180" height="130" rx="14" fill="#fff" stroke="#D97706" stroke-width="2.5"/>
+<text x="1160.0" y="438" class="t" text-anchor="middle">Indexer</text>
+<text x="1160.0" y="464" class="s" text-anchor="middle">Splits code into chunks</text>
+<text x="1160.0" y="485" class="s" text-anchor="middle">using the local model</text>
+<text x="1160.0" y="506" class="s" text-anchor="middle">(prepared in advance)</text>
+<rect x="1070" y="600" width="180" height="110" rx="14" fill="#fff" stroke="#D97706" stroke-width="2.5"/>
+<text x="1160.0" y="638" class="t" text-anchor="middle">Odoo source code</text>
+<text x="1160.0" y="664" class="s" text-anchor="middle">Local Git checkout</text>
+<path d="M250 265 H318" fill="none" stroke="#6B7280" stroke-width="2.5" marker-end="url(#eg)" marker-start="url(#sg)"/>
+<text x="284" y="253" class="l" fill="#6B7280" text-anchor="middle">question</text>
+<text x="284" y="288" class="l" fill="#6B7280" text-anchor="middle">answer</text>
+<path d="M760 265 H858" fill="none" stroke="#6B7280" stroke-width="2.5" marker-end="url(#eg)" marker-start="url(#sg)"/>
+<text x="809" y="236" class="l" fill="#6B7280" text-anchor="middle">question</text>
+<text x="809" y="253" class="l" fill="#6B7280" text-anchor="middle">+ code</text>
+<text x="809" y="288" class="l" fill="#6B7280" text-anchor="middle">answer</text>
+<path d="M730 465 H858" fill="none" stroke="#2563EB" stroke-width="2.5" marker-end="url(#eb)" marker-start="url(#sb)"/>
+<text x="794" y="453" class="l" fill="#2563EB" text-anchor="middle">search</text>
+<path d="M1068 465 H1042" fill="none" stroke="#D97706" stroke-width="2.5" marker-end="url(#eo)"/>
+<path d="M1160 598 V532" fill="none" stroke="#D97706" stroke-width="2.5" marker-end="url(#eo)"/>
+</svg>
