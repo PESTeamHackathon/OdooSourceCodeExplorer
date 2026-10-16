@@ -64,7 +64,6 @@ public sealed class ChatService(IAnswerGenerator answerGenerator, ICodeRetriever
                 usedCharacters += size;
             }
             var request = new AnswerRequest(Array.AsReadOnly(context), retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count);
-            request = request with { Concise = System.Text.RegularExpressions.Regex.IsMatch(question, @"(?i)\b(summary|summari[sz]e|brief|one sentence)\b") };
             var draft = selected.Count == 0 ? new AnswerDraft("insufficient", []) : await answerGenerator.GenerateAsync(request, cancellationToken);
             var answer = BusinessAnswerPolicy.Render(draft, request);
             cancellationToken.ThrowIfCancellationRequested();
@@ -93,20 +92,13 @@ public sealed class ChatService(IAnswerGenerator answerGenerator, ICodeRetriever
 
     private string BuildRetrievalQuestion(string question)
     {
-        // A self-contained new question must not be drowned out by an older topic.
-        // Resolve short follow-ups from the latest substantive user question, never an assistant claim.
-        if (!IsFollowUp(question)) return question;
-        var users = _messages.Where(m => m.Role == ChatRole.User).Select(m => m.Content).ToArray();
-        var anchor = users.LastOrDefault(q => !IsFollowUp(q)) ?? users.LastOrDefault();
-        var context = string.Join("\n", new[] { anchor, users.LastOrDefault() }.OfType<string>().Distinct()
-            .Select(q => q[..Math.Min(500, q.Length)]));
+        var previous = _messages.Where(m => m.Role == ChatRole.User).TakeLast(3)
+            .Select(m => m.Content[..Math.Min(500, m.Content.Length)]);
+        var context = string.Join("\n", previous);
         var remaining = MaxQuestionLength - question.Length - 60;
         if (context.Length == 0 || remaining <= 0) return question;
         return "Earlier user questions:\n" + context[..Math.Min(context.Length, remaining)] + "\nCurrent question:\n" + question;
     }
-
-    private static bool IsFollowUp(string question) => System.Text.RegularExpressions.Regex.IsMatch(question,
-        @"(?i)(^\s*(and\b|what if\b|what about\b|how about\b|summari[sz]e\b|in that case\b)|\b(it|that|those|them)\b)");
 
     private static void ValidateAttachments(IReadOnlyList<ChatAttachment> attachments)
     {

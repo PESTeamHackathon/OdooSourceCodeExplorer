@@ -61,7 +61,6 @@ public sealed class CodeAwareChatTests
     [InlineData("Look at addons/sale/models/sale_order.py", "evidence-1")]
     [InlineData("SaleOrder handles this.", "evidence-1")]
     [InlineData("Use `code`.", "evidence-1")]
-    [InlineData("The stock extension processes this.", "evidence-1")]
     [InlineData("A claim with an invented source", "invented")]
     public async Task UnsafeOrUncitedClaimsNeverReachBusinessTranscript(string text, string id)
     {
@@ -120,29 +119,6 @@ public sealed class CodeAwareChatTests
         await chat.SendAsync("Question");
         Assert.Contains("Unlock the order", chat.Messages[^1].Content);
         Assert.Contains("not enough to confirm the rest", chat.Messages[^1].Content);
-    }
-
-    [Fact]
-    public async Task SummaryRequestSelectsConciseProviderFormat()
-    {
-        var generator = new FakeGenerator();
-        var chat = Create(new FakeRetriever(), generator);
-        await chat.SendAsync("Summarize that in one sentence.");
-        Assert.True(generator.Request!.Concise);
-    }
-
-    [Fact]
-    public async Task SelfContainedQuestionsDoNotRetrieveAnOlderTopicButSummariesKeepLatestTopic()
-    {
-        var retrieval = new FakeRetriever();
-        var chat = Create(retrieval, new FakeGenerator());
-        await chat.SendAsync("Can I cancel a locked sales order?");
-        const string latest = "For an unlocked sales order, what does cancellation do to draft invoices and unfinished deliveries?";
-        await chat.SendAsync(latest);
-        Assert.Equal(latest, retrieval.Query!.Question);
-        await chat.SendAsync("Summarize that.");
-        Assert.Contains(latest, retrieval.Query!.Question);
-        Assert.DoesNotContain("Can I cancel a locked sales order?", retrieval.Query.Question);
     }
 
     private static ChatService Create(ICodeRetriever retrieval, IAnswerGenerator generator, KnowledgeChatOptions? options = null)

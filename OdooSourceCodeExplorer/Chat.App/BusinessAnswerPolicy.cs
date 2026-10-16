@@ -21,9 +21,7 @@ public static class BusinessAnswerPolicy
                 ContainsImplementationDetails(claim.Text, request))
                 return Insufficient;
         }
-        var answer = draft.Claims.Count == 1 ? draft.Claims[0].Text
-            : request.Concise ? string.Join("; ", draft.Claims.Select(c => c.Text.Trim().TrimEnd('.', '!', '?'))) + "."
-            : string.Join("\n\n", draft.Claims.Select((c, i) => $"{i + 1}. {c.Text}"));
+        var answer = draft.Claims.Count == 1 ? draft.Claims[0].Text : string.Join("\n\n", draft.Claims.Select((c, i) => $"{i + 1}. {c.Text}"));
         if (draft.Status == "partial")
             answer += "\n\nI can verify only the behavior described above; the available information is not enough to confirm the rest of the process.";
         return answer;
@@ -31,7 +29,7 @@ public static class BusinessAnswerPolicy
 
     private static bool ContainsImplementationDetails(string text, AnswerRequest request)
     {
-        if (text.Contains('`') || Regex.IsMatch(text, @"(?i)(?:\b[\w./\\-]+\.(?:py|cs)(?::\d+)?\b|\b\w+_\w+\b|\b\w+\s*\(\)|\b(?:stock|base|inherited|code|class)\s+(?:extension|method|implementation|hook)\b)")) return true;
+        if (text.Contains('`') || Regex.IsMatch(text, @"(?i)(?:\b[\w./\\-]+\.(?:py|cs)(?::\d+)?\b|\b\w+_\w+\b|\b\w+\s*\(\))")) return true;
         foreach (var hit in request.Evidence)
         {
             var c = hit.Evidence;

@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0_Items", "0_Items", "{59CE
 		README.md = README.md
 		DEMO.md = DEMO.md
 		CODE_AWARE_CHAT.md = CODE_AWARE_CHAT.md
+		.env.example = .env.example
+		.env.local = .env.local
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Indexer", "Chat.Indexer\Chat.Indexer.csproj", "{6BFFAFE9-D0FD-4CE8-B774-8D550655BB05}"
@@ -22,6 +24,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Infrastructure", "Chat.Infrastructure\Chat.Infrastructure.csproj", "{E34A4600-60EA-43A4-9EEC-4EC61BD4AE01}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.App.Tests", "Chat.App.Tests\Chat.App.Tests.csproj", "{51E9851B-750B-4464-BF4A-8858C6E829EF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "1_Scripts", "1_Scripts", "{D2722894-30B0-4556-BEB8-4F2BD5E5A6B9}"
+	ProjectSection(SolutionItems) = preProject
+		scripts\common.sh = scripts\common.sh
+		scripts\prepare.sh = scripts\prepare.sh
+		scripts\run.sh = scripts\run.sh
+		scripts\test-workflows.sh = scripts\test-workflows.sh
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
