@@ -56,7 +56,8 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
         => await ExploreAsync(repositoryPath, [new(Chat.App.ChatRole.User, question)], progress, cancellationToken);
 
     public async Task<ExplorationAnswer> ExploreAsync(string repositoryPath, IReadOnlyList<Chat.App.ChatMessage> messages,
-        Action<string>? progress = null, CancellationToken cancellationToken = default, bool pureMode = false)
+        Action<string>? progress = null, CancellationToken cancellationToken = default, bool pureMode = false,
+        IProgress<ChatProgress>? chatProgress = null)
     {
         var question = messages.LastOrDefault(m => m.Role == Chat.App.ChatRole.User)?.Content ?? "";
         var conversation = messages.Select(m => new { role = m.Role.ToString(), content = m.Content }).ToArray();
@@ -68,7 +69,14 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
         using var investigationDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         investigationDeadline.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds * 0.75));
         var budget = new ExplorationBudget();
-        var source = new LocalSourceTools(repositoryPath, investigationDeadline.Token, progress, budget);
+        // Waiting-UI progress: counters and reviewed business questions only, never the raw diagnostics.
+        var step = ChatProgressStep.Investigating;
+        var reviewRounds = 0;
+        IReadOnlyList<string> openQuestions = [];
+        LocalSourceTools? tools = null;
+        void Report() => chatProgress?.Report(new(step, tools?.SearchCalls ?? 0, tools?.Evidence.Count ?? 0, reviewRounds, openQuestions));
+        Action<string>? toolProgress = chatProgress is null ? progress : diagnostic => { progress?.Invoke(diagnostic); Report(); };
+        var source = tools = new LocalSourceTools(repositoryPath, investigationDeadline.Token, toolProgress, budget);
         try
         {
             await using var session = await client.CreateSessionAsync(new SessionConfig
@@ -106,6 +114,8 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
                     outcome = await ExplorationLoop.RunAsync(source,
                         async (review, ct) =>
                         {
+                            step = ChatProgressStep.Investigating;
+                            Report();
                             await session.SendAndWaitAsync(new MessageOptions
                             {
                                 Prompt = JsonSerializer.Serialize(new { question, conversation, coverageReview = review,
@@ -116,12 +126,17 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
                         },
                         async (previous, ct) =>
                         {
+                            step = ChatProgressStep.Reviewing;
+                            reviewRounds++;
+                            Report();
                             var reviewed = await reviewer.ReviewAsync(question, conversation, source, previous, ct);
                             // In pure mode RunAsync validates and stops on an invalid review instead of failing.
                             if (pureMode) return reviewed;
                             ExplorationLoop.Validate(reviewed, source);
                             progress?.Invoke($"Coverage reviewed: sourceComplete={ExplorationLoop.SourceComplete(reviewed)}; scope={reviewed.QuestionScope}; source gaps={reviewed.Gaps.Count(g => g.Kind == "source")}; runtime gaps={reviewed.Gaps.Count(g => g.Kind == "runtime")}.");
                             latestReview = reviewed;
+                            openQuestions = reviewed.Gaps.Where(g => g.Kind == "source")
+                                .Select(g => ExplorationLoop.SafeQuestion(g.Question, source)).Distinct().ToArray();
                             return reviewed;
                         },
                         progress, investigationDeadline.Token, pureMode);
@@ -136,6 +151,9 @@ public sealed class CopilotSourceExplorer(CopilotClient client, CopilotOptions o
                 }
                 // Pure mode only affects the final answer; investigation still needs its tool instructions.
                 var request = ExplorationLoop.WithCompleteness(ExplorationLoop.CreateRequest(messages, source), outcome, source) with { PureMode = pureMode };
+                step = ChatProgressStep.Writing;
+                openQuestions = [];
+                Report();
                 progress?.Invoke($"Writing business answer from {source.Evidence.Count} read excerpts with tools disabled. Shared operations used: {budget.Operations}.");
                 if (!budget.TryUse()) throw new AnswerGenerationException("The exploration budget was exhausted before answer generation.");
                 var generator = answerGenerator ?? new CopilotAnswerGenerator(client, Options.Create(options), NullLogger<CopilotAnswerGenerator>.Instance);

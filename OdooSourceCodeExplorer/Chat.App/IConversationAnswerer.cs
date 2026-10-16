@@ -7,6 +7,9 @@ public interface IConversationAnswerer
     // Pure mode sends no answer instructions to the model; answerers that cannot honor it must not ignore it.
     Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> messages, bool pureMode, CancellationToken cancellationToken = default) =>
         pureMode ? throw new NotSupportedException("Pure mode is not supported by this answerer.") : AnswerAsync(messages, cancellationToken);
+    // Progress is optional; answerers without progress support simply do not report.
+    Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> messages, bool pureMode, IProgress<ChatProgress>? progress,
+        CancellationToken cancellationToken = default) => AnswerAsync(messages, pureMode, cancellationToken);
 }
 
 public sealed record ConversationAnswer(string Text, ChatEvidenceTrace? Trace);

@@ -66,6 +66,25 @@ public sealed class CodeAwareChatTests
     }
 
     [Fact]
+    public async Task IndexedAnswersReportSearchingThenWritingWithoutSourceDetails()
+    {
+        var reports = new List<ChatProgress>();
+        var chat = Create(new FakeRetriever(), new FakeGenerator());
+        await chat.SendAsync("Can I cancel?", [], ChatMode.Indexed, false, new SyncProgress(reports.Add));
+        Assert.Equal([ChatProgressStep.Searching, ChatProgressStep.Writing], reports.Select(r => r.Step));
+        Assert.Equal(1, reports[^1].SectionsRead);
+        Assert.All(reports, r => Assert.Null(r.OpenQuestions));
+    }
+
+    [Fact]
+    public async Task ProgressIsOptional()
+    {
+        var chat = Create(new FakeRetriever(), new FakeGenerator());
+        await chat.SendAsync("Can I cancel?", [], ChatMode.Indexed, false, null);
+        Assert.Equal(2, chat.Messages.Count);
+    }
+
+    [Fact]
     public async Task NoEvidenceSkipsCopilotAndAcknowledgesInsufficiency()
     {
         var generator = new FakeGenerator();
@@ -154,6 +173,10 @@ public sealed class CodeAwareChatTests
 
     private static ChatService Create(ICodeRetriever retrieval, IAnswerGenerator generator, KnowledgeChatOptions? options = null)
         => new(generator, retrieval, options ?? new() { ExpectedApplicationVersion = "v1" });
+    private sealed class SyncProgress(Action<ChatProgress> report) : IProgress<ChatProgress>
+    {
+        public void Report(ChatProgress value) => report(value);
+    }
     private sealed class FakeGenerator : IAnswerGenerator
     {
         public AnswerRequest? Request { get; private set; }

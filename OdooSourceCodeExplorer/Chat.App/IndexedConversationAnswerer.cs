@@ -8,8 +8,13 @@ public sealed class IndexedConversationAnswerer(IAnswerGenerator _answerGenerato
     public Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, CancellationToken cancellationToken = default) =>
         AnswerAsync(context, false, cancellationToken);
 
-    public async Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, bool pureMode, CancellationToken cancellationToken = default)
+    public Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, bool pureMode, CancellationToken cancellationToken = default) =>
+        AnswerAsync(context, pureMode, null, cancellationToken);
+
+    public async Task<ConversationAnswer> AnswerAsync(IReadOnlyList<ChatMessage> context, bool pureMode, IProgress<ChatProgress>? progress,
+        CancellationToken cancellationToken = default)
     {
+        progress?.Report(new(ChatProgressStep.Searching));
         var question = context[^1].Content;
         RetrievalResult retrieved;
         using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -40,6 +45,7 @@ public sealed class IndexedConversationAnswerer(IAnswerGenerator _answerGenerato
             usedCharacters += size;
         }
         var request = new AnswerRequest(context, retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count, PureMode: pureMode);
+        progress?.Report(new(ChatProgressStep.Writing, SectionsRead: selected.Count));
         // Pure mode asks Copilot even without evidence; normal mode never lets it answer unsupported.
         var draft = selected.Count == 0 && !pureMode ? new AnswerDraft("insufficient", []) : await _answerGenerator.GenerateAsync(request, cancellationToken);
         var answer = BusinessAnswerPolicy.Render(draft, request);

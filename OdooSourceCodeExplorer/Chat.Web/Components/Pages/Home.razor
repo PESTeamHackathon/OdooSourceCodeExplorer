@@ -29,7 +29,7 @@
         @if (Chat.Messages.Count > 0 || _busy)
         {
             <section class="chat-history" @ref="_history" aria-label="Conversation" aria-live="polite" aria-busy="@_busy">
-                @foreach (var message in Chat.Messages)
+                @foreach (var (message, index) in Chat.Messages.Select((m, i) => (m, i)))
                 {
                     <article class="chat-message @(message.Role == ChatRole.User ? "question" : "answer")">
                         <strong>@(message.Role == ChatRole.User ? "You" : "Assistant")</strong>
@@ -41,6 +41,10 @@
                         else
                         {
                             <div class="message-markdown">@RenderMarkdown(message.Content)</div>
+                            @if (_answerTimes.TryGetValue(index, out var took))
+                            {
+                                <p class="answer-time">Answered in @FormatElapsed(took)</p>
+                            }
                         }
                     </article>
                 }
@@ -55,6 +59,25 @@
                         @(_pendingMode == ChatMode.Exploration ? "Investigating related workflows…" : "Preparing an evidence-based answer…")
                         <span class="elapsed" aria-label="Waiting time">@FormatElapsed(_waiting.Elapsed)</span>
                     </p>
+                    @if (_progress is { } progress)
+                    {
+                        <ol class="progress-steps" aria-label="Progress">
+                            @foreach (var (state, text) in ProgressItems(progress))
+                            {
+                                <li class="@state">@text</li>
+                            }
+                        </ol>
+                        @if (progress.Step == ChatProgressStep.Investigating && progress.OpenQuestions is { Count: > 0 } open)
+                        {
+                            <p class="progress-label">Following up on:</p>
+                            <ul class="progress-questions">
+                                @foreach (var question in open)
+                                {
+                                    <li>@question</li>
+                                }
+                            </ul>
+                        }
+                    }
                 }
             </section>
         }
@@ -150,6 +173,8 @@
     private bool _busy;
     private bool _thinking;
     private bool _pureMode;
+    private ChatProgress? _progress;
+    private readonly Dictionary<int, TimeSpan> _answerTimes = [];
     private readonly System.Diagnostics.Stopwatch _waiting = new();
     private CancellationTokenSource? _ticker;
     private ChatMode _pendingMode;
@@ -173,13 +198,25 @@
         _attachments = [];
         _scrollToLatest = true;
         StartTimer();
+        _progress = null;
+        // Progress arrives from background provider callbacks; render on the component's dispatcher.
+        var progress = new CallbackProgress(p => _ = InvokeAsync(() =>
+        {
+            // Scroll only when lines appear or change, not on every counter update.
+            _scrollToLatest |= _progress is null || _progress.Step != p.Step || _progress.ReviewRounds != p.ReviewRounds ||
+                !(_progress.OpenQuestions ?? []).SequenceEqual(p.OpenQuestions ?? []);
+            _progress = p;
+            StateHasChanged();
+        }));
         var succeeded = false;
         using var request = new CancellationTokenSource();
         _request = request;
         try
         {
-            await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, _pureMode, request.Token);
+            await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, _pureMode, progress, request.Token);
             succeeded = true;
+            // Keyed by transcript position; the answer is always the newest message.
+            _answerTimes[Chat.Messages.Count - 1] = _waiting.Elapsed;
         }
         catch (OperationCanceledException) { _error = "Request canceled. You can retry your question."; }
         catch (Exception ex) when (ex is AnswerGenerationException or ArgumentException or InvalidOperationException)
@@ -194,6 +231,8 @@
         finally
         {
             StopTimer();
+            progress.Stop();
+            _progress = null;
             if (!succeeded)
             {
                 _question = _pendingQuestion;
@@ -280,10 +319,44 @@
 
     private static string FormatElapsed(TimeSpan elapsed) => $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
 
+    private IEnumerable<(string State, string Text)> ProgressItems(ChatProgress p)
+    {
+        static string State(bool active, bool done) => active ? "active" : done ? "done" : "pending";
+        var writing = p.Step == ChatProgressStep.Writing;
+        if (_pendingMode == ChatMode.Indexed)
+        {
+            yield return (State(!writing, writing), writing ? $"Found {Plural(p.SectionsRead, "matching code section")}" : "Finding matching code");
+            yield return (State(writing, false), "Writing the answer");
+            yield break;
+        }
+        var investigating = p.Step == ChatProgressStep.Investigating;
+        var reviewing = p.Step == ChatProgressStep.Reviewing;
+        yield return (State(investigating, !investigating),
+            $"Investigating the code · {Plural(p.Searches, "search", "searches")} · {Plural(p.SectionsRead, "code section")} read");
+        yield return (State(reviewing, p.ReviewRounds > 0 && !reviewing),
+            p.ReviewRounds == 0 ? "Checking for gaps" : $"Checking for gaps · round {p.ReviewRounds}");
+        yield return (State(writing, false), "Writing the answer");
+    }
+
+    private static string Plural(int count, string singular, string? plural = null) =>
+        $"{count} {(count == 1 ? singular : plural ?? singular + "s")}";
+
+    // Ignores reports after the request finished, so late provider callbacks cannot resurrect the checklist.
+    private sealed class CallbackProgress(Action<ChatProgress> onReport) : IProgress<ChatProgress>
+    {
+        private volatile bool _stopped;
+        public void Report(ChatProgress value)
+        {
+            if (!_stopped) onReport(value);
+        }
+        public void Stop() => _stopped = true;
+    }
+
     private void Reset()
     {
         if (_busy) return;
         Chat.Clear();
+        _answerTimes.Clear();
         _error = null;
     }
 

@@ -40,7 +40,11 @@ public sealed class ChatService : IChatService
     public Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, ChatMode mode, CancellationToken cancellationToken = default) =>
         SendAsync(question, attachments, mode, false, cancellationToken);
 
-    public async Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, ChatMode mode, bool pureMode, CancellationToken cancellationToken = default)
+    public Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, ChatMode mode, bool pureMode, CancellationToken cancellationToken = default) =>
+        SendAsync(question, attachments, mode, pureMode, null, cancellationToken);
+
+    public async Task SendAsync(string question, IReadOnlyList<ChatAttachment> attachments, ChatMode mode, bool pureMode,
+        IProgress<ChatProgress>? progress, CancellationToken cancellationToken = default)
     {
         if (!Capabilities.IsAvailable(mode))
             throw new ArgumentException("This answer mode is unavailable. Ask the developer to enable it.", nameof(mode));
@@ -63,7 +67,7 @@ public sealed class ChatService : IChatService
                 throw new InvalidOperationException("This conversation has too many attached files. Start a new conversation to continue.");
 
             ChatMessage[] context = [.. _messages, new(ChatRole.User, question.Trim(), attachments.Count == 0 ? null : [.. attachments])];
-            var result = await answerer.AnswerAsync(Array.AsReadOnly(context), pureMode, cancellationToken);
+            var result = await answerer.AnswerAsync(Array.AsReadOnly(context), pureMode, progress, cancellationToken);
             var answer = result.Text;
             cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(answer))
