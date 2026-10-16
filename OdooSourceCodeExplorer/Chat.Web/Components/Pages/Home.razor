@@ -146,14 +146,17 @@
         _error = null;
         _pendingQuestion = _question;
         _pendingAttachments = [.. _attachments];
+        // Empty the input right away; it is restored below if the question needs a retry.
+        _question = "";
+        _attachments = [];
         _scrollToLatest = true;
+        var succeeded = false;
         using var request = new CancellationTokenSource();
         _request = request;
         try
         {
             await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, request.Token);
-            _question = "";
-            _attachments = [];
+            succeeded = true;
         }
         catch (OperationCanceledException) { _error = "Request canceled. You can retry your question."; }
         catch (Exception ex) when (ex is AnswerGenerationException or ArgumentException or InvalidOperationException)
@@ -167,6 +170,11 @@
         }
         finally
         {
+            if (!succeeded)
+            {
+                _question = _pendingQuestion;
+                _attachments = [.. _pendingAttachments];
+            }
             _request = null;
             _busy = false;
             _pendingQuestion = null;
