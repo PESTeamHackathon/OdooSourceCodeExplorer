@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddOptions<CopilotOptions>()
             .Bind(configuration.GetSection(CopilotOptions.SectionName))
             .Validate(o => o.TimeoutSeconds is >= 10 and <= 600, "Copilot:TimeoutSeconds must be between 10 and 600.")
+            .Validate(o => o.UsdPerAiCredit > 0 && o.EurPerUsd is null or > 0, "Copilot:UsdPerAiCredit and Copilot:EurPerUsd must be positive.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.BaseDirectory) && Path.IsPathFullyQualified(o.BaseDirectory),
                 "Copilot:BaseDirectory must be an absolute path.")
             .ValidateOnStart();

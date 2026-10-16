@@ -71,9 +71,21 @@ public sealed class CodeAwareChatTests
         var reports = new List<ChatProgress>();
         var chat = Create(new FakeRetriever(), new FakeGenerator());
         await chat.SendAsync("Can I cancel?", [], ChatMode.Indexed, false, new SyncProgress(reports.Add));
-        Assert.Equal([ChatProgressStep.Searching, ChatProgressStep.Writing], reports.Select(r => r.Step));
+        Assert.Equal([ChatProgressStep.Searching, ChatProgressStep.Writing, ChatProgressStep.Checking], reports.Select(r => r.Step));
         Assert.Equal(1, reports[^1].SectionsRead);
+        Assert.Equal(Hit.Evidence.EndLine - Hit.Evidence.StartLine + 1, reports[1].CodeLines);
         Assert.All(reports, r => Assert.Null(r.OpenQuestions));
+    }
+
+    [Fact]
+    public async Task ProviderTokenUsageIsReportedAfterTheAnswer()
+    {
+        var reports = new List<ChatProgress>();
+        var generator = new FakeGenerator { Draft = new AnswerDraft("supported", [new("Unlock the order before cancelling.", ["evidence-1"])]) { Usage = new(9120, 410) } };
+        var chat = Create(new FakeRetriever(), generator);
+        await chat.SendAsync("Can I cancel?", [], ChatMode.Indexed, false, new SyncProgress(reports.Add));
+        Assert.Null(reports[1].Usage);
+        Assert.Equal(new TokenUsage(9120, 410), reports[^1].Usage);
     }
 
     [Fact]

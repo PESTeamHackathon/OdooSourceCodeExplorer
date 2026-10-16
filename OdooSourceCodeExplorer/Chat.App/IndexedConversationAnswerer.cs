@@ -45,9 +45,16 @@ public sealed class IndexedConversationAnswerer(IAnswerGenerator _answerGenerato
             usedCharacters += size;
         }
         var request = new AnswerRequest(context, retrieved.Index, selected.AsReadOnly(), selected.Count != retrieved.Hits.Count, PureMode: pureMode);
-        progress?.Report(new(ChatProgressStep.Writing, SectionsRead: selected.Count));
+        var skipped = retrieved.Hits.Count - selected.Count;
+        var codeLines = selected.Sum(h => h.Evidence.EndLine - h.Evidence.StartLine + 1);
         // Pure mode asks Copilot even without evidence; normal mode never lets it answer unsupported.
-        var draft = selected.Count == 0 && !pureMode ? new AnswerDraft("insufficient", []) : await _answerGenerator.GenerateAsync(request, cancellationToken);
+        var askCopilot = selected.Count > 0 || pureMode;
+        if (askCopilot) progress?.Report(new(ChatProgressStep.Writing, SectionsRead: selected.Count, SectionsSkipped: skipped,
+            CodeLines: codeLines));
+        var draft = askCopilot ? await _answerGenerator.GenerateAsync(request, cancellationToken) : new AnswerDraft("insufficient", []);
+        // Reported in both modes so the UI can show Copilot's real token use; Pure mode hides the check line.
+        progress?.Report(new(ChatProgressStep.Checking, SectionsRead: selected.Count, SectionsSkipped: skipped, Usage: draft.Usage,
+            CodeLines: codeLines));
         var answer = BusinessAnswerPolicy.Render(draft, request);
         var accepted = answer != BusinessAnswerPolicy.Insufficient && answer != BusinessAnswerPolicy.Conflicting;
         var trace = new ChatEvidenceTrace(retrieved.Index, selected.Select(h => new EvidenceReference(h.Evidence.Id, h.Evidence.RelativePath, h.Evidence.StartLine, h.Evidence.EndLine)).ToArray(),

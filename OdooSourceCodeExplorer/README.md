@@ -99,13 +99,13 @@ Configuration uses standard .NET providers. `Chat.Web/appsettings.json` includes
 ```json
 {
   "Copilot": {
-    "Model": null,
+    "Model": "claude-sonnet-5.5",
     "TimeoutSeconds": 120
   }
 }
 ```
 
-A null model uses the runtime's default available to your account. Set `Copilot__Model` to a model ID available in your CLI `/model` selector. `Copilot__TimeoutSeconds` accepts 10–600 seconds. `Copilot__BaseDirectory` overrides the absolute path used for credentials/session state; log in with that same path as `COPILOT_HOME`. Configuration changes require restarting the app. Credentials and SDK execution stay server-side.
+The default model is `claude-sonnet-5.5`; set it to null to let the runtime choose (auto mode). Each answer shows the tokens Copilot reports and an approximate AI-credit cost, estimated from the account's published price for the model that answered (cached-token and auto-mode discounts are not applied). The euro figure uses `Copilot:UsdPerAiCredit` (0.01, GitHub's published price) and the fixed `Copilot:EurPerUsd` rate (0.8922, ECB reference rate of 2026-10-15); update the rate manually or remove it to hide euros. Set `Copilot__Model` to a model ID available in your CLI `/model` selector. `Copilot__TimeoutSeconds` accepts 10–600 seconds. `Copilot__BaseDirectory` overrides the absolute path used for credentials/session state; log in with that same path as `COPILOT_HOME`. Configuration changes require restarting the app. Credentials and SDK execution stay server-side.
 
 ## Verify
 

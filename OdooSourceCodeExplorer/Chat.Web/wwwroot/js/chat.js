@@ -8,9 +8,12 @@ document.addEventListener('keydown', e => {
     if (submit && !submit.disabled) input.form.requestSubmit(submit);
 });
 
-// Shows the newest message: scrolls the history to its end, then keeps the chat card in view.
+// Shows the newest content: scrolls the history to its end, then keeps the conversation box in view.
 window.chatScrollToLatest = history => {
     if (!history) return;
+    // Scroll the conversation to its very end, so long answers show their last line and details.
+    // Scrolling the last message into view instead would jump back to the start of a tall answer.
     history.scrollTo({ top: history.scrollHeight, behavior: 'smooth' });
-    history.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // The conversation box is at most half the screen, so this only keeps it visible on the page.
+    history.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 };

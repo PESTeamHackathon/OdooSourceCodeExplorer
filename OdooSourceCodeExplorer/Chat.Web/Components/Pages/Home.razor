@@ -19,6 +19,10 @@
             <div>
                 <h2>Ask about Odoo</h2>
                 <p class="small text-secondary">Answers use the selected application knowledge. Missing or conflicting information will be acknowledged.</p>
+                @if (_sessionAnswers > 0)
+                {
+                    <p class="session-cost" aria-live="polite">@FormatSessionCost()</p>
+                }
             </div>
             @if (Chat.Messages.Count > 0)
             {
@@ -43,7 +47,7 @@
                             <div class="message-markdown">@RenderMarkdown(message.Content)</div>
                             @if (_answerTimes.TryGetValue(index, out var took))
                             {
-                                <p class="answer-time">Answered in @FormatElapsed(took)</p>
+                                <p class="answer-time">@FormatAnswerDetails(took)</p>
                             }
                         }
                     </article>
@@ -90,9 +94,17 @@
         <form class="chat-input" @onsubmit="SendAsync" @onsubmit:preventDefault>
             <div class="chat-compose">
                 <label for="question" class="visually-hidden">Your question</label>
-                <textarea id="question" class="form-control" rows="2" maxlength="@ChatService.MaxQuestionLength"
-                          placeholder="Ask about Odoo, such as “What happens when I cancel a sales order?”"
-                          @bind="_question" @bind:event="oninput" disabled="@_busy" required data-enter-submits></textarea>
+                <div class="input-wrap">
+                    <textarea id="question" class="form-control" rows="2" maxlength="@ChatService.MaxQuestionLength"
+                              placeholder="Ask about Odoo, such as “What happens when I cancel a sales order?”"
+                              @bind="_question" @bind:event="oninput" disabled="@_busy" required data-enter-submits></textarea>
+                    <label class="attach-button @(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage ? "disabled" : "")"
+                           title="Attach images or text files" aria-label="Attach files">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <InputFile class="visually-hidden" multiple accept="@ChatAttachment.AcceptedExtensions"
+                                   OnChange="AddFilesAsync" disabled="@(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage)"/>
+                    </label>
+                </div>
                 @if (_attachments.Count > 0)
                 {
                     <ul class="attachment-list pending" aria-label="Files to send">
@@ -108,23 +120,7 @@
                 }
             </div>
             <div class="chat-actions">
-                <label class="btn btn-light attach-button @(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage ? "disabled" : "")"
-                       title="Attach images or text files" aria-label="Attach files">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <InputFile class="visually-hidden" multiple accept="@ChatAttachment.AcceptedExtensions"
-                               OnChange="AddFilesAsync" disabled="@(_busy || _attachments.Count >= ChatAttachment.MaxPerMessage)"/>
-                </label>
                 <div class="mode-choices">
-                <div class="thinking-choice">
-                    <label class="form-check form-switch" for="thinking">
-                        <input id="thinking" class="form-check-input" type="checkbox" role="switch"
-                               @bind="_thinking" disabled="@(_busy || !Chat.Capabilities.IndexedAvailable || !Chat.Capabilities.ExplorationAvailable)"
-                               aria-describedby="thinking-help thinking-availability" />
-                        Thinking
-                    </label>
-                    <small id="thinking-help">Investigate related workflows for a more detailed answer. Takes longer.</small>
-                    <small id="thinking-availability">@AvailabilityMessage</small>
-                </div>
                 <div class="thinking-choice">
                     <label class="form-check form-switch" for="pure-mode">
                         <input id="pure-mode" class="form-check-input" type="checkbox" role="switch"
@@ -171,24 +167,31 @@
     private bool _scrollToLatest;
     private string? _error;
     private bool _busy;
-    private bool _thinking;
-    private bool _pureMode;
+    private bool _pureMode = true;
+    private bool _pendingPure;
     private ChatProgress? _progress;
-    private readonly Dictionary<int, TimeSpan> _answerTimes = [];
+    private readonly Dictionary<int, AnswerDetails> _answerTimes = [];
+    // Running cost of this page visit; a page refresh starts again from zero, New conversation does not.
+    private int _sessionAnswers;
+    private long _sessionTokens;
+    private double _sessionCredits;
+    private double _sessionEuros;
+    private bool _sessionCostIncomplete;
+
+    // Kept per answer, because the live checklist disappears when the answer arrives.
+    private sealed record AnswerDetails(TimeSpan Elapsed, TokenUsage? Usage, int? CodeLines, bool CodeLeftOut);
     private readonly System.Diagnostics.Stopwatch _waiting = new();
     private CancellationTokenSource? _ticker;
     private ChatMode _pendingMode;
-    private string AvailabilityMessage => !Chat.Capabilities.ExplorationAvailable
-        ? "Thinking is unavailable in this session."
-        : !Chat.Capabilities.IndexedAvailable ? "Thinking is required in this session; quick answers are unavailable." : "";
 
-    protected override void OnInitialized() => _thinking = Chat.Capabilities.DefaultMode == ChatMode.Exploration;
     private CancellationTokenSource? _request;
 
     private async Task SendAsync()
     {
         if (_busy || string.IsNullOrWhiteSpace(_question)) return;
-        _pendingMode = _thinking ? ChatMode.Exploration : ChatMode.Indexed;
+        // Thinking (exploration) is not offered in the UI; every question uses indexed answers.
+        _pendingMode = ChatMode.Indexed;
+        _pendingPure = _pureMode;
         _busy = true;
         _error = null;
         _pendingQuestion = _question;
@@ -213,10 +216,13 @@
         _request = request;
         try
         {
-            await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, _pureMode, progress, request.Token);
+            await Chat.SendAsync(_pendingQuestion, _pendingAttachments, _pendingMode, _pendingPure, progress, request.Token);
             succeeded = true;
             // Keyed by transcript position; the answer is always the newest message.
-            _answerTimes[Chat.Messages.Count - 1] = _waiting.Elapsed;
+            var last = progress.Last;
+            _answerTimes[Chat.Messages.Count - 1] = new(_waiting.Elapsed, last?.Usage,
+                last is null ? null : last.CodeLines, last?.SectionsSkipped > 0);
+            AddToSessionCost(last?.Usage);
         }
         catch (OperationCanceledException) { _error = "Request canceled. You can retry your question."; }
         catch (Exception ex) when (ex is AnswerGenerationException or ArgumentException or InvalidOperationException)
@@ -325,8 +331,17 @@
         var writing = p.Step == ChatProgressStep.Writing;
         if (_pendingMode == ChatMode.Indexed)
         {
-            yield return (State(!writing, writing), writing ? $"Found {Plural(p.SectionsRead, "matching code section")}" : "Finding matching code");
-            yield return (State(writing, false), "Writing the answer");
+            var searching = p.Step == ChatProgressStep.Searching;
+            var checking = p.Step == ChatProgressStep.Checking;
+            var found = p.SectionsRead == 0 ? "No code found"
+                : $"Picked {Plural(p.CodeLines, "line")} of code"
+                  + (p.SectionsSkipped > 0 ? " · some left out to fit the size limit" : "");
+            yield return (State(searching, !searching), searching ? "Searching the code index by meaning and keywords" : found);
+            yield return (State(writing, checking), checking
+                ? "Copilot wrote the answer" + (p.Usage is { } u ? $" · {FormatTokens(u)}" : "")
+                : "Copilot is writing the answer");
+            if (!_pendingPure)
+                yield return (State(checking, false), "Checking the answer against the code");
             yield break;
         }
         var investigating = p.Step == ChatProgressStep.Investigating;
@@ -338,6 +353,41 @@
         yield return (State(writing, false), "Writing the answer");
     }
 
+    private void AddToSessionCost(TokenUsage? usage)
+    {
+        _sessionAnswers++;
+        if (usage is null) return; // Copilot was not called (for example no code found), so nothing was spent.
+        _sessionTokens += usage.InputTokens + usage.OutputTokens;
+        if (usage.AiCredits is { } credits) _sessionCredits += credits;
+        else _sessionCostIncomplete = true;
+        if (usage.Euros is { } euros) _sessionEuros += euros;
+        else _sessionCostIncomplete = true;
+    }
+
+    private string FormatSessionCost()
+    {
+        var answers = Plural(_sessionAnswers, "answer");
+        var cost = _sessionCredits > 0 ? $" · ≈ {_sessionCredits:0.##} AI credits" + (_sessionEuros > 0 ? $" (≈ €{_sessionEuros:0.000})" : "") : "";
+        // Some answers used Copilot but had no known price, so the total is a lower bound.
+        var note = _sessionCostIncomplete && _sessionCredits > 0 ? " · some answers not priced" : "";
+        return $"This session: {answers} · {_sessionTokens:N0} tokens{cost}{note}";
+    }
+
+    private static string FormatAnswerDetails(AnswerDetails details)
+    {
+        var parts = new List<string>();
+        if (details.CodeLines is { } lines)
+            parts.Add((lines == 0 ? "No code found" : $"Picked {Plural(lines, "line")} of code") + (details.CodeLeftOut ? " (some left out)" : ""));
+        parts.Add($"Answered in {FormatElapsed(details.Elapsed)}");
+        if (details.Usage is { } usage) parts.Add(FormatTokens(usage));
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatTokens(TokenUsage usage) =>
+        $"{usage.InputTokens:N0} tokens in · {usage.OutputTokens:N0} out"
+        + (usage.AiCredits is { } credits ? $" · ≈ {credits:0.##} AI credits" : "")
+        + (usage.Euros is { } euros ? $" (≈ €{euros:0.000})" : "");
+
     private static string Plural(int count, string singular, string? plural = null) =>
         $"{count} {(count == 1 ? singular : plural ?? singular + "s")}";
 
@@ -345,9 +395,13 @@
     private sealed class CallbackProgress(Action<ChatProgress> onReport) : IProgress<ChatProgress>
     {
         private volatile bool _stopped;
+        // The latest report, readable synchronously when the request completes.
+        public ChatProgress? Last { get; private set; }
         public void Report(ChatProgress value)
         {
-            if (!_stopped) onReport(value);
+            if (_stopped) return;
+            Last = value;
+            onReport(value);
         }
         public void Stop() => _stopped = true;
     }

@@ -13,7 +13,15 @@ public sealed record AnswerDraft(string Status, IReadOnlyList<AnswerClaim> Claim
 {
     // Pure mode: Copilot's raw text as a single claim, returned without validation.
     public const string Pure = "pure";
+
+    // Provider-reported token use for this draft; never read from model output.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public TokenUsage? Usage { get; init; }
 }
+
+// AiCredits is an estimate from the model's published token prices; null when no price is known.
+public sealed record TokenUsage(long InputTokens, long OutputTokens, double? AiCredits = null, string? Model = null,
+    double? Euros = null);
 public sealed record EvidenceReference(string ChunkId, string RelativePath, int StartLine, int EndLine);
 public sealed record ChatEvidenceTrace(KnowledgeIndexInfo Index, IReadOnlyList<EvidenceReference> Evidence,
     IReadOnlyList<string> UsedEvidenceIds, string Status, bool EvidenceOmitted);

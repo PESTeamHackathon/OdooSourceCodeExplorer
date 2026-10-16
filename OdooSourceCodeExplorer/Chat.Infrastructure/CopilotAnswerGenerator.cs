@@ -86,6 +86,26 @@ public sealed class CopilotAnswerGenerator(
                     PermissionDecision.Reject("This chat has no tools enabled."))
 #pragma warning restore GHCP001
             }, deadline.Token);
+            // Copilot reports token use per model call; events arrive before the session goes idle.
+            long inputTokens = 0, outputTokens = 0, calls = 0;
+            string? usedModel = null;
+            using var usageEvents = session.On<AssistantUsageEvent>(e =>
+            {
+                Interlocked.Add(ref inputTokens, e.Data.InputTokens ?? 0);
+                Interlocked.Add(ref outputTokens, e.Data.OutputTokens ?? 0);
+                Interlocked.Increment(ref calls);
+                if (!string.IsNullOrWhiteSpace(e.Data.Model)) Volatile.Write(ref usedModel, e.Data.Model);
+            });
+            async Task<TokenUsage?> UsageAsync()
+            {
+                if (Interlocked.Read(ref calls) == 0) return null;
+                var model = Volatile.Read(ref usedModel) ?? options.Value.Model;
+                var input = Interlocked.Read(ref inputTokens);
+                var output = Interlocked.Read(ref outputTokens);
+                var credits = await EstimateCreditsAsync(model, input, output, deadline.Token);
+                var euros = credits * options.Value.UsdPerAiCredit * options.Value.EurPerUsd;
+                return new(input, output, credits, model, euros);
+            }
 
             var transcript = JsonSerializer.Serialize(messages.Select(m => new
             {
@@ -129,11 +149,11 @@ public sealed class CopilotAnswerGenerator(
                 if (string.IsNullOrWhiteSpace(response?.Data.Content))
                     throw new AnswerGenerationException("No answer was received. Please try again.");
                 if (request.PureMode)
-                    return new AnswerDraft(AnswerDraft.Pure, [new(response.Data.Content, [])]);
+                    return new AnswerDraft(AnswerDraft.Pure, [new(response.Data.Content, [])]) { Usage = await UsageAsync() };
                 var draft = JsonSerializer.Deserialize<AnswerDraft>(response.Data.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                     ?? throw new AnswerGenerationException("The answer could not be verified. Please try again.");
                 // Only a pure-mode request may produce an unvalidated draft.
-                return draft.Status == AnswerDraft.Pure ? draft with { Status = "insufficient" } : draft;
+                return (draft.Status == AnswerDraft.Pure ? draft with { Status = "insufficient" } : draft) with { Usage = await UsageAsync() };
             }
             catch
             {
@@ -156,6 +176,27 @@ public sealed class CopilotAnswerGenerator(
             logger.LogWarning("Copilot request failed ({ErrorType}). Check server-side authentication, model access and usage limits.", ex.GetType().Name);
             throw new AnswerGenerationException(
                 "The answer service is unavailable. Ask the developer to check Copilot sign-in, model access and usage limits, then try again.", ex);
+        }
+    }
+
+    // Uses the account's published per-model token prices (AI credits per batch of tokens). The SDK caches the list.
+    // Cached-token discounts and auto-mode discounts are not applied, so this is an upper-bound estimate.
+    private async Task<double?> EstimateCreditsAsync(string? model, long inputTokens, long outputTokens, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return null;
+        try
+        {
+            var models = await client.ListModelsAsync(cancellationToken);
+            var prices = models.FirstOrDefault(m => string.Equals(m.Id, model, StringComparison.OrdinalIgnoreCase))?.Billing?.TokenPrices;
+            if (prices?.BatchSize is not (> 0 and long batch) || prices.InputPrice is not { } inputPrice || prices.OutputPrice is not { } outputPrice)
+                return null;
+            return (inputTokens * inputPrice + outputTokens * outputPrice) / batch;
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Pricing is informational; never fail an answer because the price list is unavailable.
+            logger.LogDebug("Model price list unavailable for credit estimate.");
+            return null;
         }
     }
 }

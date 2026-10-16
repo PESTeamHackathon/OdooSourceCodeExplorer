@@ -73,6 +73,14 @@ h1.hand {
     margin-bottom: 1rem;
 }
 
+.session-cost {
+    margin: .35rem 0 0;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #714B67;
+    font-variant-numeric: tabular-nums;
+}
+
 .reset-button {
     flex: none;
     color: #714B67;
@@ -292,12 +300,37 @@ h1.hand {
     gap: .5rem;
 }
 
+.input-wrap {
+    position: relative;
+}
+
+    .input-wrap textarea {
+        padding-bottom: 2.6rem;
+    }
+
+/* Sits inside the question box, bottom left, like common chat inputs. */
 .attach-button {
+    position: absolute;
+    left: .5rem;
+    bottom: .45rem;
     display: inline-flex;
     align-items: center;
-    padding-inline: .7rem;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 6px;
     color: #714B67;
+    cursor: pointer;
 }
+
+    .attach-button:hover {
+        background: #F4EEF2;
+    }
+
+    .attach-button.disabled {
+        opacity: .45;
+        pointer-events: none;
+    }
 
 .attachment-list {
     list-style: none;
